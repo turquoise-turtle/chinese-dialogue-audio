@@ -30,8 +30,19 @@ python generate_all.py --only=01     # just one conversation
 - `generate_all.py` — CLI batch generator for all pre-built conversations
 - `templates/index.html` — Web UI (single page, loads with a default dialogue)
 - `output/` — Generated MP3 files (auto-created)
-- `requirements.txt` — edge-tts, flask, imageio-ffmpeg, pypinyin
+- `render.yaml` — Render deployment config (Blueprint spec)
+- `requirements.txt` — edge-tts, flask, gunicorn, imageio-ffmpeg, pypinyin
 - `venv/` — Python virtual environment
+
+## Deployment
+
+The app is deployed on Render (free tier).
+
+- **Live URL**: https://chinese-audio-practice.onrender.com
+- **Config**: `render.yaml` (Blueprint spec — auto-detected by Render)
+- **WSGI server**: gunicorn (`gunicorn app:app`)
+- **Auto-deploy**: Pushes to the main branch on GitHub trigger a redeploy
+- **Cold starts**: Free tier spins down after 15 min of inactivity; first request takes ~30s
 
 ## Adding New Conversations
 

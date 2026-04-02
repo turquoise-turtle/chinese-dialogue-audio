@@ -1,5 +1,9 @@
 # Chinese Audio Practice Generator
 
+**[Try the live demo](https://chinese-audio-practice.onrender.com)**
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/maxchalabi/chinese-dialogue-audio)
+
 A lightweight web app that turns Chinese dialogue text into multi-speaker MP3 audio. Built for my own Mandarin listening practice — I'm learning from scratch and wanted a fast way to generate audio from the conversations and vocabulary I'm studying.
 
 ## Why I built this
@@ -100,6 +104,7 @@ The tool then turns those dialogues into audio I can listen to on repeat.
 ├── templates/
 │   └── index.html         # Web UI (single page)
 ├── run.sh                 # Quick-start script
+├── render.yaml            # Render deployment config
 ├── requirements.txt       # Pinned Python dependencies
 └── output/                # Generated MP3s (gitignored)
 ```
