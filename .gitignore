@@ -1,0 +1,25 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Generated audio
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+
+# Build artifacts
+.bin/

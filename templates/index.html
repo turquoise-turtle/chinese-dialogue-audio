@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chinese Audio Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232733;
+      --border: #2e3345;
+      --text: #e4e6ed;
+      --text2: #9298ad;
+      --accent: #6c8cff;
+      --accent-dim: #4a62b3;
+      --red: #ff6b6b;
+      --green: #51cf66;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: .25rem;
+    }
+
+    .subtitle {
+      color: var(--text2);
+      font-size: .95rem;
+      margin-bottom: 2rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+
+    .panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: .75rem;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-size: .8rem;
+    }
+
+    /* Textarea */
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: .95rem;
+      padding: .85rem;
+      resize: vertical;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      line-height: 1.65;
+    }
+
+    textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+    textarea::placeholder { color: var(--text2); opacity: .6; }
+
+    /* Voice config */
+    .voice-row {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      margin-bottom: .6rem;
+    }
+
+    .voice-row label {
+      min-width: 70px;
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .voice-row select {
+      flex: 1;
+      padding: .4rem .6rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: .82rem;
+    }
+
+    /* Rate slider */
+    .rate-group {
+      margin-top: 1rem;
+    }
+
+    .rate-group label {
+      display: block;
+      font-size: .85rem;
+      margin-bottom: .35rem;
+      color: var(--text2);
+    }
+
+    .rate-row {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+
+    .rate-value {
+      font-size: .82rem;
+      color: var(--text2);
+      min-width: 40px;
+      text-align: right;
+      font-family: monospace;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: .4rem;
+      padding: .65rem 1.4rem;
+      border: none;
+      border-radius: var(--radius);
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+    }
+
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      width: 100%;
+      margin-top: 1rem;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+
+    .btn-download {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: .82rem;
+      padding: .45rem 1rem;
+      margin-top: .6rem;
+    }
+
+    .btn-download:hover { background: var(--border); }
+
+    /* Status */
+    .status {
+      margin-top: .75rem;
+      font-size: .82rem;
+      color: var(--text2);
+      min-height: 1.4em;
+    }
+
+    .status.error { color: var(--red); }
+    .status.success { color: var(--green); }
+
+    /* Audio player */
+    .player-area {
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .player-area.visible { display: block; }
+
+    audio {
+      width: 100%;
+      border-radius: var(--radius);
+    }
+
+    /* Speaker tags in textarea hint */
+    .hint {
+      font-size: .78rem;
+      color: var(--text2);
+      margin-top: .4rem;
+      opacity: .7;
+    }
+
+    #voiceConfig {
+      min-height: 40px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--text2);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: .3rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Pinyin overlay (replaces textarea in-place) */
+    .text-wrapper { position: relative; }
+
+    .pinyin-overlay {
+      display: none;
+      width: 100%;
+      min-height: 260px;
+      max-height: 500px;
+      overflow-y: auto;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: .95rem;
+      padding: .85rem;
+      line-height: 2.6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .pinyin-overlay.visible { display: block; }
+    .pinyin-overlay.visible + textarea { display: none; }
+
+    .pinyin-overlay ruby { margin: 0 .02em; }
+    .pinyin-overlay rt {
+      font-size: .55em;
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .pinyin-overlay rt.sandhi {
+      color: #e8a855;
+    }
+    .pinyin-overlay ruby:has(rt.sandhi) {
+      cursor: help;
+    }
+
+    .btn-tool {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: .82rem;
+      padding: .45rem 1rem;
+    }
+    .btn-tool:hover { background: var(--border); }
+    .btn-tool.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* Translation tooltip */
+    .translate-tip {
+      position: fixed;
+      z-index: 1000;
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: .5rem .75rem;
+      max-width: 320px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45);
+      pointer-events: none;
+    }
+
+    .translate-tip.visible { display: block; }
+
+    .translate-tip-zh {
+      font-size: .85rem;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: .2rem;
+    }
+
+    .translate-tip-en {
+      font-size: .88rem;
+      color: var(--text);
+    }
+
+    .translate-tip.loading .translate-tip-en::after {
+      content: "";
+      display: inline-block;
+      width: 10px; height: 10px;
+      border: 2px solid var(--text2);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      margin-left: .35rem;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Chinese Audio Generator</h1>
+    <p class="subtitle">Paste a dialogue, pick voices, generate MP3 with different speakers</p>
+
+    <div class="grid">
+      <!-- Left: main area -->
+      <div>
+        <div class="panel">
+          <h2>Dialogue Text</h2>
+          <div class="text-wrapper">
+            <div class="pinyin-overlay" id="pinyinOverlay"></div>
+            <textarea id="dialogueText" placeholder="售货员：您好！您要什么？&#10;顾客：我要两件T恤。&#10;售货员：一共三百三十二块。">售货员：您好！您要什么？
+顾客：我要两件T恤，一顶帽子，还有五块肥皂。
+售货员：好的。T恤一件一百六十六块，两件三百三十二块。帽子一顶十七块。肥皂一块五块，五块二十五块。
+顾客：一共多少钱？
+售货员：一共三百七十四块。
+顾客：给您四百块。
+售货员：找您二十六块。谢谢！</textarea>
+          </div>
+          <div style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+            <p class="hint" style="margin:0">Format: Speaker：Text &mdash; select any word(s) to translate</p>
+            <button class="btn btn-tool" id="pinyinBtn">Show Pinyin</button>
+          </div>
+        </div>
+
+        <div class="player-area" id="playerArea">
+          <div class="panel">
+            <h2>Result</h2>
+            <audio id="audioPlayer" controls></audio>
+            <button class="btn btn-download" id="downloadBtn">Download MP3</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: config sidebar -->
+      <div>
+        <div class="panel">
+          <h2>Voices</h2>
+          <div id="voiceConfig">
+            <p style="font-size:.82rem;color:var(--text2)">Paste text to detect speakers...</p>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:1rem">
+          <h2>Speed</h2>
+          <div class="rate-group">
+            <label>Speech rate</label>
+            <div class="rate-row">
+              <input type="range" id="rateSlider" min="-50" max="50" value="0" step="5">
+              <span class="rate-value" id="rateDisplay">+0%</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="generateBtn" disabled>Generate Audio</button>
+        <div class="status" id="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="translate-tip" id="translateTip">
+    <div class="translate-tip-zh" id="tipZh"></div>
+    <div class="translate-tip-en" id="tipEn"></div>
+  </div>
+
+  <script>
+    const VOICES = {{ voices | tojson }};
+
+    const dialogueText = document.getElementById("dialogueText");
+    const voiceConfig = document.getElementById("voiceConfig");
+    const rateSlider = document.getElementById("rateSlider");
+    const rateDisplay = document.getElementById("rateDisplay");
+    const generateBtn = document.getElementById("generateBtn");
+    const status = document.getElementById("status");
+    const playerArea = document.getElementById("playerArea");
+    const audioPlayer = document.getElementById("audioPlayer");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const pinyinBtn = document.getElementById("pinyinBtn");
+    const pinyinOverlay = document.getElementById("pinyinOverlay");
+    const translateTip = document.getElementById("translateTip");
+    const tipZh = document.getElementById("tipZh");
+    const tipEn = document.getElementById("tipEn");
+
+    let currentVoiceMap = {};
+    let currentAudioUrl = null;
+    let parseTimeout = null;
+    let pinyinVisible = false;
+    let translateAbort = null;
+
+    // Rate slider display
+    rateSlider.addEventListener("input", () => {
+      const v = parseInt(rateSlider.value);
+      rateDisplay.textContent = (v >= 0 ? "+" : "") + v + "%";
+    });
+
+    function resetOverlays() {
+      if (pinyinVisible) {
+        pinyinOverlay.classList.remove("visible");
+        pinyinBtn.textContent = "Show Pinyin";
+        pinyinBtn.classList.remove("active");
+        pinyinVisible = false;
+      }
+      hideTranslateTip();
+    }
+
+    function hideTranslateTip() {
+      translateTip.classList.remove("visible", "loading");
+      if (translateAbort) { translateAbort.abort(); translateAbort = null; }
+    }
+
+    // Auto-parse on text change (debounced), and reset overlays
+    dialogueText.addEventListener("input", () => {
+      clearTimeout(parseTimeout);
+      parseTimeout = setTimeout(parseSpeakers, 400);
+      resetOverlays();
+    });
+
+    async function parseSpeakers() {
+      const text = dialogueText.value.trim();
+      if (!text) {
+        voiceConfig.innerHTML = '<p style="font-size:.82rem;color:var(--text2)">Paste text to detect speakers...</p>';
+        generateBtn.disabled = true;
+        return;
+      }
+
+      const res = await fetch("/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+
+      if (!data.speakers || data.speakers.length === 0) {
+        voiceConfig.innerHTML = '<p style="font-size:.82rem;color:var(--text2)">No speakers detected</p>';
+        generateBtn.disabled = true;
+        return;
+      }
+
+      currentVoiceMap = data.defaults;
+      let html = "";
+      for (const speaker of data.speakers) {
+        const defaultVoice = data.defaults[speaker] || Object.keys(VOICES)[0];
+        html += `<div class="voice-row">
+          <label>${speaker}</label>
+          <select data-speaker="${speaker}" onchange="updateVoiceMap(this)">`;
+        for (const [id, label] of Object.entries(VOICES)) {
+          const sel = id === defaultVoice ? " selected" : "";
+          html += `<option value="${id}"${sel}>${label}</option>`;
+        }
+        html += `</select></div>`;
+      }
+      voiceConfig.innerHTML = html;
+      generateBtn.disabled = false;
+    }
+
+    function updateVoiceMap(el) {
+      currentVoiceMap[el.dataset.speaker] = el.value;
+    }
+
+    // Generate audio
+    generateBtn.addEventListener("click", async () => {
+      const text = dialogueText.value.trim();
+      if (!text) return;
+
+      generateBtn.disabled = true;
+      status.className = "status";
+      status.innerHTML = '<span class="spinner"></span>Generating audio...';
+      playerArea.classList.remove("visible");
+
+      if (currentAudioUrl) {
+        URL.revokeObjectURL(currentAudioUrl);
+        currentAudioUrl = null;
+      }
+
+      try {
+        const rate = (parseInt(rateSlider.value) >= 0 ? "+" : "") + rateSlider.value + "%";
+
+        const res = await fetch("/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            voice_map: currentVoiceMap,
+            rate,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Generation failed");
+        }
+
+        const blob = await res.blob();
+        currentAudioUrl = URL.createObjectURL(blob);
+        audioPlayer.src = currentAudioUrl;
+        playerArea.classList.add("visible");
+        status.className = "status success";
+        status.textContent = "Audio generated successfully!";
+      } catch (e) {
+        status.className = "status error";
+        status.textContent = "Error: " + e.message;
+      } finally {
+        generateBtn.disabled = false;
+      }
+    });
+
+    // Pinyin toggle (inline overlay replacing textarea)
+    pinyinBtn.addEventListener("click", async () => {
+      if (pinyinVisible) {
+        pinyinOverlay.classList.remove("visible");
+        pinyinBtn.textContent = "Show Pinyin";
+        pinyinBtn.classList.remove("active");
+        pinyinVisible = false;
+        return;
+      }
+      const text = dialogueText.value.trim();
+      if (!text) return;
+
+      pinyinBtn.disabled = true;
+      pinyinBtn.textContent = "Loading...";
+      try {
+        const res = await fetch("/pinyin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        pinyinOverlay.innerHTML = data.html;
+        pinyinOverlay.querySelectorAll("rt.sandhi").forEach(rt => {
+          rt.closest("ruby").title = "tone sandhi (spoken differently)";
+        });
+        pinyinOverlay.classList.add("visible");
+        pinyinBtn.textContent = "Hide Pinyin";
+        pinyinBtn.classList.add("active");
+        pinyinVisible = true;
+      } catch (e) {
+        pinyinBtn.textContent = "Show Pinyin";
+      } finally {
+        pinyinBtn.disabled = false;
+      }
+    });
+
+    // Select-to-translate: works on textarea and pinyin overlay
+    async function showTranslateTip(selectedText, x, y) {
+      const cleaned = selectedText.trim();
+      if (!cleaned) return;
+
+      hideTranslateTip();
+
+      tipZh.textContent = cleaned;
+      tipEn.textContent = "";
+      translateTip.classList.add("visible", "loading");
+
+      const tipW = 280, tipH = 70, pad = 12;
+      let left = x + pad;
+      let top = y + pad;
+      if (left + tipW > window.innerWidth) left = x - tipW - pad;
+      if (top + tipH > window.innerHeight) top = y - tipH - pad;
+      translateTip.style.left = Math.max(4, left) + "px";
+      translateTip.style.top = Math.max(4, top) + "px";
+
+      translateAbort = new AbortController();
+      try {
+        const res = await fetch("/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: cleaned }),
+          signal: translateAbort.signal,
+        });
+        const data = await res.json();
+        tipEn.textContent = (data.lines && data.lines[0]) || cleaned;
+        translateTip.classList.remove("loading");
+      } catch (e) {
+        if (e.name !== "AbortError") {
+          tipEn.textContent = "(translation failed)";
+          translateTip.classList.remove("loading");
+        }
+      }
+    }
+
+    dialogueText.addEventListener("mouseup", (e) => {
+      const sel = dialogueText.value.substring(dialogueText.selectionStart, dialogueText.selectionEnd);
+      if (sel.trim()) showTranslateTip(sel, e.clientX, e.clientY);
+      else hideTranslateTip();
+    });
+
+    function getSelectedChineseOnly() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return "";
+      const frag = selection.getRangeAt(0).cloneContents();
+      frag.querySelectorAll("rt, rp").forEach(el => el.remove());
+      return (frag.textContent || "").trim();
+    }
+
+    pinyinOverlay.addEventListener("mouseup", (e) => {
+      const sel = getSelectedChineseOnly();
+      if (sel) showTranslateTip(sel, e.clientX, e.clientY);
+      else hideTranslateTip();
+    });
+
+    document.addEventListener("mousedown", (e) => {
+      if (translateTip.contains(e.target)) return;
+      hideTranslateTip();
+    });
+
+    // Download
+    downloadBtn.addEventListener("click", () => {
+      if (!currentAudioUrl) return;
+      const a = document.createElement("a");
+      a.href = currentAudioUrl;
+      a.download = "dialogue.mp3";
+      a.click();
+    });
+
+    // Auto-parse default text on load
+    if (dialogueText.value.trim()) parseSpeakers();
+  </script>
+</body>
+</html>

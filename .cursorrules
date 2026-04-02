@@ -1,0 +1,127 @@
+# Chinese Audio Practice Generator
+
+## Project Overview
+
+A Python web app that generates MP3 audio files of Chinese dialogue conversations
+using edge-tts, with different male/female voices per speaker. Built for a beginner
+Mandarin learner (lessons 1-5).
+
+## How to Run
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Web UI (paste and generate)
+python app.py
+# Opens http://localhost:5000
+
+# Batch CLI (generate all 16 pre-built conversations)
+python generate_all.py
+python generate_all.py --rate=-15%   # slower for beginners
+python generate_all.py --only=01     # just one conversation
+```
+
+## Project Structure
+
+- `app.py` — Flask web server (main entry point for web UI)
+- `tts_engine.py` — Core TTS logic: parse_dialogue, detect_speakers, generate_audio
+- `conversations.py` — 16 pre-built conversations (used by CLI batch generator)
+- `generate_all.py` — CLI batch generator for all pre-built conversations
+- `templates/index.html` — Web UI (single page, loads with a default dialogue)
+- `output/` — Generated MP3 files (auto-created)
+- `requirements.txt` — edge-tts, flask, imageio-ffmpeg, pypinyin
+- `venv/` — Python virtual environment
+
+## Adding New Conversations
+
+Edit `conversations.py` and add a new dict to the CONVERSATIONS list:
+
+```python
+{
+    "id": "17",
+    "name": "your_name_here",
+    "description": "Short description",
+    "lines": [
+        ("售货员", "您好！"),
+        ("顾客", "我要一瓶水。"),
+    ],
+}
+```
+
+Then run `python generate_all.py --only=17` to generate the audio.
+
+## Paste Format for Web UI
+
+```
+售货员：您好！您要什么？
+顾客：我要两件T恤。
+```
+
+Both Chinese colon (：) and ASCII colon (:) are supported.
+
+## Web UI Features
+
+- **Show Pinyin**: Toggle button overlays pinyin with tone marks above each Chinese character inline in the text panel. Applies tone sandhi rules (3rd+3rd, 一, 不) and highlights changed tones in amber.
+- **Select-to-Translate**: Select any word(s) in the textarea or pinyin overlay to see an instant English translation tooltip. Pinyin annotations are stripped so only characters are sent for translation.
+- **Voice Assignment**: Auto-detects speakers and lets you pick male/female voices for each.
+- **Speed Slider**: Adjust speech rate from -50% to +50%.
+
+## Available Voices
+
+- zh-CN-XiaoxiaoNeural — female, natural (default for 1st speaker)
+- zh-CN-XiaoyiNeural — female, young
+- zh-CN-YunxiNeural — male, natural (default for 2nd speaker)
+- zh-CN-YunyangNeural — male, broadcast (default for narrator/旁白)
+- zh-CN-YunjianNeural — male, sporty
+- zh-CN-YunxiaNeural — male, boyish
+
+## Complete Vocabulary Reference (Lessons 1-5)
+
+### Numbers
+零-十, 十一-九十九, 一百-九百九十九 (with 零 rule: 一百零二)
+
+### Measure Words
+瓶 (bottle), 盒 (box), 听 (can), 个 (general), 双 (pair), 件 (clothing), 顶 (hat), 块 (bar), 条 (pants)
+
+### Money
+块/元 (yuan), 毛 (0.1 yuan), 分 (0.01 yuan)
+
+### Verbs
+买, 要, 给, 找, 是
+
+### Pronouns
+我, 你, 您, 他, 她, 它 + 们
+
+### Demonstratives
+这/那 + MW + noun; 这个, 那个
+
+### People
+售货员, 顾客, 师傅
+
+### Greetings
+你好, 您好, 你好吗, 我很好, 你呢, 晚安, 再见, 谢谢, 生日快乐
+
+### Shopping Phrases
+多少钱, 一共, 还要别的吗, 不要了, 扫码还是现金, 现金
+
+### Food/Drink
+可乐, 牛奶, 水, 矿泉水, 三明治, 面包, 鸡蛋, 巧克力, 方便面, 水果, 冰棍, 鸡肉, 牛肉
+
+### Clothing
+鞋, T恤, 帽子, 裤子, 袜子
+
+### Toiletries
+肥皂, 纸巾, 牙刷, 洗发水, 浴液, 毛巾
+
+### Other Nouns
+礼物, 钱, 汽油, 东西
+
+### Currencies
+美元, 欧元, 日元, 韩币, 泰铢
+
+### Adverbs/Adjectives
+很, 好, 经常, 大一点儿, 小一点儿
+
+### Sentence Patterns
+我要买..., X多少钱？, 一共...钱, 给您..., 找您..., 我经常买..., 这是..., 我是...
