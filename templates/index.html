@@ -212,14 +212,6 @@
       border-radius: var(--radius);
     }
 
-    /* Speaker tags in textarea hint */
-    .hint {
-      font-size: .78rem;
-      color: var(--text2);
-      margin-top: .4rem;
-      opacity: .7;
-    }
-
     #voiceConfig {
       min-height: 40px;
     }
@@ -280,11 +272,89 @@
       font-size: .82rem;
       padding: .45rem 1rem;
     }
-    .btn-tool:hover { background: var(--border); }
+    .btn-tool:hover:not(:disabled) { background: var(--border); }
     .btn-tool.active {
       background: var(--accent);
       color: #fff;
       border-color: var(--accent);
+    }
+
+    /* Highlight overlay — mirrors textarea by default */
+    .highlight-overlay {
+      display: none;
+      width: 100%;
+      min-height: 260px;
+      max-height: 500px;
+      overflow-y: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: .95rem;
+      padding: .85rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+
+    .highlight-overlay.visible { display: block; }
+    .highlight-overlay.visible ~ .pinyin-overlay,
+    .highlight-overlay.visible ~ textarea { display: none; }
+
+    .highlight-overlay.with-pinyin {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 2.6;
+      border-color: var(--accent);
+      white-space: normal;
+    }
+
+    .highlight-overlay ruby { margin: 0 .02em; }
+    .highlight-overlay rt {
+      font-size: .55em;
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .highlight-overlay rt.sandhi { color: #e8a855; }
+    .highlight-overlay ruby:has(rt.sandhi) { cursor: help; }
+
+    .hw-active {
+      background: rgba(255, 90, 90, 0.35);
+      border-radius: 2px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: .75rem;
+    }
+    .panel-header h2 { margin-bottom: 0; }
+
+    .btn-shuffle {
+      background: transparent;
+      border: none;
+      color: var(--text2);
+      font-size: .72rem;
+      font-weight: 500;
+      padding: .25rem .5rem;
+      gap: .25rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color .15s, background .15s;
+    }
+    .btn-shuffle:hover { color: var(--text); background: var(--surface2); }
+    .btn-shuffle:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-shuffle svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+
+    .tool-bar {
+      display: flex;
+      justify-content: center;
+      gap: .5rem;
+      margin-top: .5rem;
     }
 
     /* Translation tooltip */
@@ -337,20 +407,21 @@
       <!-- Left: main area -->
       <div>
         <div class="panel">
-          <h2>Dialogue Text</h2>
-          <div class="text-wrapper">
-            <div class="pinyin-overlay" id="pinyinOverlay"></div>
-            <textarea id="dialogueText" placeholder="售货员：您好！您要什么？&#10;顾客：我要两件T恤。&#10;售货员：一共三百三十二块。">售货员：您好！您要什么？
-顾客：我要两件T恤，一顶帽子，还有五块肥皂。
-售货员：好的。T恤一件一百六十六块，两件三百三十二块。帽子一顶十七块。肥皂一块五块，五块二十五块。
-顾客：一共多少钱？
-售货员：一共三百七十四块。
-顾客：给您四百块。
-售货员：找您二十六块。谢谢！</textarea>
+          <div class="panel-header">
+            <h2>Dialogue Text</h2>
+            <button class="btn btn-shuffle" id="shuffleBtn" title="Load a random conversation">
+              <svg viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.18 1.42-1.42zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              Shuffle
+            </button>
           </div>
-          <div style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
-            <p class="hint" style="margin:0">Format: Speaker：Text &mdash; select any word(s) to translate</p>
+          <div class="text-wrapper">
+            <div class="highlight-overlay" id="highlightOverlay"></div>
+            <div class="pinyin-overlay" id="pinyinOverlay"></div>
+            <textarea id="dialogueText" placeholder="售货员：您好！您要什么？&#10;顾客：我要两件T恤。&#10;售货员：一共三百三十二块。">{{ default_text }}</textarea>
+          </div>
+          <div class="tool-bar">
             <button class="btn btn-tool" id="pinyinBtn">Show Pinyin</button>
+            <button class="btn btn-tool" id="highlightBtn" disabled>Highlight Words</button>
           </div>
         </div>
 
@@ -408,17 +479,23 @@
     const downloadBtn = document.getElementById("downloadBtn");
     const pinyinBtn = document.getElementById("pinyinBtn");
     const pinyinOverlay = document.getElementById("pinyinOverlay");
+    const highlightBtn = document.getElementById("highlightBtn");
+    const highlightOverlay = document.getElementById("highlightOverlay");
+    const shuffleBtn = document.getElementById("shuffleBtn");
     const translateTip = document.getElementById("translateTip");
     const tipZh = document.getElementById("tipZh");
     const tipEn = document.getElementById("tipEn");
 
     let currentVoiceMap = {};
-    let currentAudioUrl = null;
+    let currentAudioId = null;
     let parseTimeout = null;
     let pinyinVisible = false;
+    let highlightEnabled = false;
+    let timingData = null;
+    let pinyinCache = null;
     let translateAbort = null;
+    let lastActiveHw = null;
 
-    // Rate slider display
     rateSlider.addEventListener("input", () => {
       const v = parseInt(rateSlider.value);
       rateDisplay.textContent = (v >= 0 ? "+" : "") + v + "%";
@@ -431,6 +508,16 @@
         pinyinBtn.classList.remove("active");
         pinyinVisible = false;
       }
+      if (highlightEnabled) {
+        highlightOverlay.classList.remove("visible", "with-pinyin");
+        highlightBtn.textContent = "Highlight Words";
+        highlightBtn.classList.remove("active");
+        highlightEnabled = false;
+      }
+      if (lastActiveHw) { lastActiveHw.classList.remove("hw-active"); lastActiveHw = null; }
+      timingData = null;
+      pinyinCache = null;
+      highlightBtn.disabled = true;
       hideTranslateTip();
     }
 
@@ -439,7 +526,6 @@
       if (translateAbort) { translateAbort.abort(); translateAbort = null; }
     }
 
-    // Auto-parse on text change (debounced), and reset overlays
     dialogueText.addEventListener("input", () => {
       clearTimeout(parseTimeout);
       parseTimeout = setTimeout(parseSpeakers, 400);
@@ -488,7 +574,6 @@
       currentVoiceMap[el.dataset.speaker] = el.value;
     }
 
-    // Generate audio
     generateBtn.addEventListener("click", async () => {
       const text = dialogueText.value.trim();
       if (!text) return;
@@ -498,10 +583,16 @@
       status.innerHTML = '<span class="spinner"></span>Generating audio...';
       playerArea.classList.remove("visible");
 
-      if (currentAudioUrl) {
-        URL.revokeObjectURL(currentAudioUrl);
-        currentAudioUrl = null;
+      if (highlightEnabled) {
+        highlightOverlay.classList.remove("visible", "with-pinyin");
+        highlightBtn.textContent = "Highlight Words";
+        highlightBtn.classList.remove("active");
+        highlightEnabled = false;
       }
+      if (lastActiveHw) { lastActiveHw.classList.remove("hw-active"); lastActiveHw = null; }
+      timingData = null;
+      pinyinCache = null;
+      highlightBtn.disabled = true;
 
       try {
         const rate = (parseInt(rateSlider.value) >= 0 ? "+" : "") + rateSlider.value + "%";
@@ -509,11 +600,7 @@
         const res = await fetch("/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text,
-            voice_map: currentVoiceMap,
-            rate,
-          }),
+          body: JSON.stringify({ text, voice_map: currentVoiceMap, rate }),
         });
 
         if (!res.ok) {
@@ -521,10 +608,13 @@
           throw new Error(err.error || "Generation failed");
         }
 
-        const blob = await res.blob();
-        currentAudioUrl = URL.createObjectURL(blob);
-        audioPlayer.src = currentAudioUrl;
+        const data = await res.json();
+        currentAudioId = data.id;
+        timingData = data.timing;
+
+        audioPlayer.src = "/audio/" + data.id;
         playerArea.classList.add("visible");
+        highlightBtn.disabled = false;
         status.className = "status success";
         status.textContent = "Audio generated successfully!";
       } catch (e) {
@@ -535,20 +625,101 @@
       }
     });
 
-    // Pinyin toggle (inline overlay replacing textarea)
-    pinyinBtn.addEventListener("click", async () => {
-      if (pinyinVisible) {
-        pinyinOverlay.classList.remove("visible");
-        pinyinBtn.textContent = "Show Pinyin";
-        pinyinBtn.classList.remove("active");
-        pinyinVisible = false;
-        return;
+    function interpolateCharTiming(text, words) {
+      const result = [];
+      let covered = 0;
+      for (const w of (words || [])) {
+        const idx = text.indexOf(w.text, covered);
+        const startIdx = idx >= 0 ? idx : covered;
+        if (startIdx > covered) {
+          for (let j = covered; j < startIdx; j++)
+            result.push({ char: text[j], start: null, end: null });
+        }
+        const chars = [...w.text];
+        const dur = w.end - w.start;
+        const perChar = dur / chars.length;
+        for (let k = 0; k < chars.length; k++) {
+          result.push({
+            char: chars[k],
+            start: +(w.start + k * perChar).toFixed(3),
+            end: +(w.start + (k + 1) * perChar).toFixed(3),
+          });
+        }
+        covered = startIdx + w.text.length;
       }
-      const text = dialogueText.value.trim();
-      if (!text) return;
+      for (let j = covered; j < text.length; j++)
+        result.push({ char: text[j], start: null, end: null });
+      return result;
+    }
 
-      pinyinBtn.disabled = true;
-      pinyinBtn.textContent = "Loading...";
+    function parsePinyinChars(pinyinHtml) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = pinyinHtml;
+      const chars = [];
+      for (const node of tmp.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          for (const c of node.textContent) chars.push({ char: c, html: escHtml(c) });
+        } else if (node.nodeName === "RUBY") {
+          const base = node.childNodes[0]?.textContent || "";
+          chars.push({ char: base, html: node.outerHTML });
+        } else {
+          const t = node.textContent || "";
+          for (const c of t) chars.push({ char: c, html: escHtml(c) });
+        }
+      }
+      return chars;
+    }
+
+    function buildHighlightHtml(timing, withPinyin, pinyinLines) {
+      const parts = [];
+      for (let li = 0; li < timing.length; li++) {
+        const line = timing[li];
+        const prefix = line.speaker + "\uff1a";
+        const charTimings = interpolateCharTiming(line.text, line.words);
+
+        let pinyinChars = null;
+        if (withPinyin && pinyinLines && pinyinLines[li]) {
+          pinyinChars = parsePinyinChars(pinyinLines[li]);
+        }
+
+        let lineHtml = "";
+        const prefixLen = [...prefix].length;
+
+        if (pinyinChars) {
+          for (let ci = 0; ci < prefixLen && ci < pinyinChars.length; ci++)
+            lineHtml += pinyinChars[ci].html;
+        } else {
+          lineHtml += escHtml(prefix);
+        }
+
+        for (let ci = 0; ci < charTimings.length; ci++) {
+          const ct = charTimings[ci];
+          let charHtml;
+          if (pinyinChars) {
+            const pi = prefixLen + ci;
+            charHtml = pi < pinyinChars.length ? pinyinChars[pi].html : escHtml(ct.char);
+          } else {
+            charHtml = escHtml(ct.char);
+          }
+          if (ct.start !== null) {
+            lineHtml += `<span class="hw" data-start="${ct.start}" data-end="${ct.end}">${charHtml}</span>`;
+          } else {
+            lineHtml += charHtml;
+          }
+        }
+        parts.push(lineHtml);
+      }
+      return withPinyin ? parts.join("<br>") : parts.join("\n");
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    async function fetchPinyinLines() {
+      if (pinyinCache) return pinyinCache;
+      const text = dialogueText.value.trim();
+      if (!text) return null;
       try {
         const res = await fetch("/pinyin", {
           method: "POST",
@@ -556,22 +727,79 @@
           body: JSON.stringify({ text }),
         });
         const data = await res.json();
-        pinyinOverlay.innerHTML = data.html;
-        pinyinOverlay.querySelectorAll("rt.sandhi").forEach(rt => {
+        pinyinCache = data.html.split("<br>");
+        return pinyinCache;
+      } catch { return null; }
+    }
+
+    async function renderDisplay() {
+      highlightOverlay.classList.remove("visible", "with-pinyin");
+      pinyinOverlay.classList.remove("visible");
+
+      if (highlightEnabled && timingData) {
+        const pinyinLines = pinyinVisible ? await fetchPinyinLines() : null;
+        highlightOverlay.innerHTML = buildHighlightHtml(timingData, pinyinVisible, pinyinLines);
+        if (pinyinVisible) highlightOverlay.classList.add("with-pinyin");
+        highlightOverlay.querySelectorAll("rt.sandhi").forEach(rt => {
           rt.closest("ruby").title = "tone sandhi (spoken differently)";
         });
+        highlightOverlay.classList.add("visible");
+      } else if (pinyinVisible) {
+        const lines = await fetchPinyinLines();
+        if (lines) {
+          pinyinOverlay.innerHTML = lines.join("<br>");
+          pinyinOverlay.querySelectorAll("rt.sandhi").forEach(rt => {
+            rt.closest("ruby").title = "tone sandhi (spoken differently)";
+          });
+        }
         pinyinOverlay.classList.add("visible");
-        pinyinBtn.textContent = "Hide Pinyin";
-        pinyinBtn.classList.add("active");
-        pinyinVisible = true;
-      } catch (e) {
-        pinyinBtn.textContent = "Show Pinyin";
-      } finally {
-        pinyinBtn.disabled = false;
+      }
+    }
+
+    highlightBtn.addEventListener("click", async () => {
+      if (!timingData) return;
+      highlightEnabled = !highlightEnabled;
+      highlightBtn.textContent = highlightEnabled ? "Stop Highlight" : "Highlight Words";
+      highlightBtn.classList.toggle("active", highlightEnabled);
+      await renderDisplay();
+    });
+
+    pinyinBtn.addEventListener("click", async () => {
+      pinyinVisible = !pinyinVisible;
+      pinyinBtn.textContent = pinyinVisible ? "Hide Pinyin" : "Show Pinyin";
+      pinyinBtn.classList.toggle("active", pinyinVisible);
+      await renderDisplay();
+    });
+
+    audioPlayer.addEventListener("timeupdate", () => {
+      if (!highlightEnabled || !timingData) return;
+      const t = audioPlayer.currentTime;
+      const allHw = highlightOverlay.querySelectorAll(".hw");
+
+      if (lastActiveHw) {
+        const s = parseFloat(lastActiveHw.dataset.start);
+        const e = parseFloat(lastActiveHw.dataset.end);
+        if (t >= s && t < e) return;
+        lastActiveHw.classList.remove("hw-active");
+        lastActiveHw = null;
+      }
+
+      for (const el of allHw) {
+        const s = parseFloat(el.dataset.start);
+        const e = parseFloat(el.dataset.end);
+        if (t >= s && t < e) {
+          el.classList.add("hw-active");
+          el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          lastActiveHw = el;
+          return;
+        }
       }
     });
 
-    // Select-to-translate: works on textarea and pinyin overlay
+    audioPlayer.addEventListener("ended", () => {
+      if (lastActiveHw) { lastActiveHw.classList.remove("hw-active"); lastActiveHw = null; }
+    });
+
     async function showTranslateTip(selectedText, x, y) {
       const cleaned = selectedText.trim();
       if (!cleaned) return;
@@ -629,6 +857,12 @@
       else hideTranslateTip();
     });
 
+    highlightOverlay.addEventListener("mouseup", (e) => {
+      const sel = getSelectedChineseOnly();
+      if (sel) showTranslateTip(sel, e.clientX, e.clientY);
+      else hideTranslateTip();
+    });
+
     document.addEventListener("mousedown", (e) => {
       if (translateTip.contains(e.target)) return;
       hideTranslateTip();
@@ -636,11 +870,29 @@
 
     // Download
     downloadBtn.addEventListener("click", () => {
-      if (!currentAudioUrl) return;
+      if (!currentAudioId) return;
       const a = document.createElement("a");
-      a.href = currentAudioUrl;
+      a.href = "/audio/" + currentAudioId;
       a.download = "dialogue.mp3";
       a.click();
+    });
+
+    // Shuffle: load a random conversation from the library
+    shuffleBtn.addEventListener("click", async () => {
+      shuffleBtn.disabled = true;
+      try {
+        const res = await fetch("/random-conversation");
+        const data = await res.json();
+        dialogueText.value = data.text;
+        resetOverlays();
+        playerArea.classList.remove("visible");
+        await parseSpeakers();
+      } catch (e) {
+        status.className = "status error";
+        status.textContent = "Failed to load conversation";
+      } finally {
+        shuffleBtn.disabled = false;
+      }
     });
 
     // Auto-parse default text on load

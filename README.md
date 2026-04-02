@@ -17,8 +17,10 @@ This way I get unlimited listening practice that's always at my level.
 ## Features
 
 - **Multi-speaker TTS** — 6 natural Chinese voices (3 male, 3 female) via Microsoft Edge TTS. Each speaker in the dialogue gets their own voice.
+- **Highlight Words** — Toggle character-by-character highlighting that follows along as the audio plays, so you can read along in real time. Works with or without pinyin.
 - **Inline pinyin** — Toggle pinyin with tone marks above every character. Tone sandhi rules are applied automatically (3rd+3rd, 一, 不) and highlighted in amber so you learn the actual spoken tones.
 - **Select-to-translate** — Highlight any word or phrase in the text to see an instant English translation tooltip.
+- **Conversation library** — 39 built-in practice dialogues covering shopping, greetings, currency exchange, and more. Hit **Shuffle** to load a random one.
 - **Speed control** — Slow down or speed up speech from -50% to +50%.
 - **No API keys needed** — Everything runs locally for free.
 
@@ -56,8 +58,9 @@ Open **http://localhost:5000** in your browser.
 2. Speakers are auto-detected. Assign voices in the sidebar.
 3. Adjust speed if needed (negative = slower, great for beginners).
 4. Click **Generate Audio** — listen inline or download the MP3.
-5. Use **Show Pinyin** to see pronunciation with tone sandhi corrections.
-6. **Select any text** to get an instant English translation tooltip.
+5. Toggle **Highlight Words** to see character-by-character highlighting synced with audio playback.
+6. Use **Show Pinyin** to see pronunciation with tone sandhi corrections (combines with highlighting).
+7. **Select any text** to get an instant English translation tooltip.
 
 Both Chinese colon (：) and ASCII colon (:) work.
 
@@ -95,16 +98,17 @@ The tool then turns those dialogues into audio I can listen to on repeat.
 ## Project structure
 
 ```
-├── app.py                 # Flask web server
-├── tts_engine.py          # Core TTS: parsing, voice assignment, audio generation
-├── conversations.py       # 16 pre-built practice dialogues (for CLI)
-├── generate_all.py        # CLI batch generator
+├── app.py                     # Flask web server
+├── tts_engine.py              # Core TTS: parsing, voice assignment, audio generation
+├── conversation_library.py    # 39 built-in practice dialogues (used by web UI shuffle)
+├── conversations.py           # 16 pre-built dialogues (used by CLI batch generator)
+├── generate_all.py            # CLI batch generator
 ├── templates/
-│   └── index.html         # Web UI (single page)
-├── run.sh                 # Quick-start script
-├── render.yaml            # Render deployment config
-├── requirements.txt       # Pinned Python dependencies
-└── output/                # Generated MP3s (gitignored)
+│   └── index.html             # Web UI (single page)
+├── run.sh                     # Quick-start script
+├── render.yaml                # Render deployment config
+├── requirements.txt           # Pinned Python dependencies
+└── output/                    # Generated MP3s (gitignored)
 ```
 
 ## Tech stack

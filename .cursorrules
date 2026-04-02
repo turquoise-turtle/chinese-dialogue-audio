@@ -27,8 +27,9 @@ python generate_all.py --only=01     # just one conversation
 - `app.py` — Flask web server (main entry point for web UI)
 - `tts_engine.py` — Core TTS logic: parse_dialogue, detect_speakers, generate_audio
 - `conversations.py` — 16 pre-built conversations (used by CLI batch generator)
+- `conversation_library.py` — 39 conversations/texts/monologues for the web UI random-shuffle library
 - `generate_all.py` — CLI batch generator for all pre-built conversations
-- `templates/index.html` — Web UI (single page, loads with a default dialogue)
+- `templates/index.html` — Web UI (single page, loads a random conversation on each visit)
 - `output/` — Generated MP3 files (auto-created)
 - `render.yaml` — Render deployment config (Blueprint spec)
 - `requirements.txt` — edge-tts, flask, gunicorn, imageio-ffmpeg, pypinyin
@@ -74,9 +75,17 @@ Both Chinese colon (：) and ASCII colon (:) are supported.
 ## Web UI Features
 
 - **Show Pinyin**: Toggle button overlays pinyin with tone marks above each Chinese character inline in the text panel. Applies tone sandhi rules (3rd+3rd, 一, 不) and highlights changed tones in amber.
-- **Select-to-Translate**: Select any word(s) in the textarea or pinyin overlay to see an instant English translation tooltip. Pinyin annotations are stripped so only characters are sent for translation.
+- **Highlight Words**: Toggle button (enabled after audio generation) highlights the currently-spoken character during audio playback. Word-level timing from edge-tts WordBoundary events is interpolated to per-character timing. Works independently or combined with Show Pinyin — the overlay mimics the textarea (monospace, same border) or pinyin overlay (sans-serif, accent border, ruby annotations) so toggling highlight on/off causes no visual change except the moving highlight itself. The active character gets a subtle semi-transparent red background (`hw-active` class, `rgba(255, 90, 90, 0.35)`). Auto-scrolls to keep the highlighted character visible.
+- **Select-to-Translate**: Select any word(s) in the textarea, pinyin overlay, or highlight overlay to see an instant English translation tooltip. Pinyin annotations are stripped so only characters are sent for translation.
 - **Voice Assignment**: Auto-detects speakers and lets you pick male/female voices for each.
 - **Speed Slider**: Adjust speech rate from -50% to +50%.
+- **Random Conversation Library**: Each page load shows a random conversation from a library of 39 items (30 dialogues, 3 texts, 6 monologues). A small "Shuffle" button next to the "Dialogue Text" heading loads a new random conversation without a full page reload. Library data lives in `conversation_library.py`; served via `GET /random-conversation` endpoint.
+
+## Audio Generation Architecture
+
+The `/generate` endpoint returns JSON `{ id, timing }` instead of raw audio bytes. The MP3 is stored server-side in an in-memory dict (5-min TTL) and served via `GET /audio/<id>`. The `timing` array contains per-line objects with word-level `start`/`end` times (seconds) relative to the combined audio, computed from edge-tts `WordBoundary` events (requires `boundary="WordBoundary"` kwarg) + ffmpeg-based segment duration parsing + cumulative silence offsets. Note: `ffprobe` is NOT available via imageio-ffmpeg, so `_get_duration_s` uses `ffmpeg -i ... -f null -` and parses the `time=` line from stderr.
+
+`generate_audio()` in `tts_engine.py` returns `(mp3_bytes, timing)`. The batch CLI (`generate_all.py`) ignores the timing data.
 
 ## Available Voices
 

@@ -1,10 +1,14 @@
 import io
 import json
 import os
+import random
+import threading
+import time
 import urllib.parse
 import urllib.request
+import uuid
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, abort
 from pypinyin import pinyin, Style
 
 from tts_engine import (
@@ -14,13 +18,36 @@ from tts_engine import (
     generate_audio,
     VOICES,
 )
+from conversation_library import LIBRARY
 
 app = Flask(__name__)
+
+_audio_store: dict[str, tuple[bytes, float]] = {}
+_AUDIO_TTL = 300  # seconds
+_store_lock = threading.Lock()
+
+
+def _store_audio(mp3_bytes: bytes) -> str:
+    """Store MP3 bytes under a UUID and return the key."""
+    key = uuid.uuid4().hex
+    with _store_lock:
+        _audio_store[key] = (mp3_bytes, time.time())
+        expired = [k for k, (_, ts) in _audio_store.items() if time.time() - ts > _AUDIO_TTL]
+        for k in expired:
+            del _audio_store[k]
+    return key
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", voices=VOICES)
+    conv = random.choice(LIBRARY)
+    return render_template("index.html", voices=VOICES, default_text=conv["text"])
+
+
+@app.route("/random-conversation")
+def random_conversation():
+    conv = random.choice(LIBRARY)
+    return jsonify({"title": conv["title"], "text": conv["text"]})
 
 
 @app.route("/parse", methods=["POST"])
@@ -42,8 +69,19 @@ def generate():
     if not lines:
         return jsonify({"error": "No dialogue lines found"}), 400
 
-    mp3_bytes = generate_audio(lines, voice_map, rate=rate)
+    mp3_bytes, timing = generate_audio(lines, voice_map, rate=rate)
+    audio_id = _store_audio(mp3_bytes)
 
+    return jsonify({"id": audio_id, "timing": timing})
+
+
+@app.route("/audio/<audio_id>")
+def serve_audio(audio_id):
+    with _store_lock:
+        entry = _audio_store.get(audio_id)
+    if not entry:
+        abort(404)
+    mp3_bytes, _ = entry
     return send_file(
         io.BytesIO(mp3_bytes),
         mimetype="audio/mpeg",

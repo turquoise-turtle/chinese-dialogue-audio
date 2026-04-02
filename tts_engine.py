@@ -42,6 +42,31 @@ NARRATOR_VOICE = "zh-CN-YunyangNeural"
 PAUSE_BETWEEN_LINES_MS = 900
 
 
+def _get_duration_s(path: str) -> float:
+    """Return the duration of an audio file in seconds.
+
+    Uses ffmpeg (always available via imageio-ffmpeg) by running a null
+    transcode and parsing the 'time=' progress line from stderr.
+    """
+    if not _FFMPEG:
+        return 0.0
+    result = subprocess.run(
+        [_FFMPEG, "-i", path, "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    for line in reversed(result.stderr.splitlines()):
+        if "time=" in line:
+            for part in line.split():
+                if part.startswith("time="):
+                    ts = part[5:]
+                    try:
+                        h, m, s = ts.split(":")
+                        return int(h) * 3600 + int(m) * 60 + float(s)
+                    except (ValueError, TypeError):
+                        pass
+    return 0.0
+
+
 def parse_dialogue(text: str) -> list[tuple[str, str]]:
     """Split pasted text into [(speaker, line), ...].
 
@@ -103,14 +128,25 @@ def assign_default_voices(speakers: list[str]) -> dict[str, str]:
     return voice_map
 
 
-async def _synthesize_line(text: str, voice: str, rate: str) -> bytes:
-    """Generate MP3 bytes for a single line using edge-tts."""
-    communicate = edge_tts.Communicate(text, voice, rate=rate)
+async def _synthesize_line(
+    text: str, voice: str, rate: str,
+) -> tuple[bytes, list[dict]]:
+    """Generate MP3 bytes and word-boundary timing for a single line."""
+    communicate = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
     buffer = io.BytesIO()
+    word_boundaries: list[dict] = []
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             buffer.write(chunk["data"])
-    return buffer.getvalue()
+        elif chunk["type"] == "WordBoundary":
+            offset_s = chunk["offset"] / 10_000_000
+            duration_s = chunk["duration"] / 10_000_000
+            word_boundaries.append({
+                "text": chunk["text"],
+                "start": round(offset_s, 3),
+                "end": round(offset_s + duration_s, 3),
+            })
+    return buffer.getvalue(), word_boundaries
 
 
 def _make_silence_mp3(duration_ms: int, tmpdir: str) -> str:
@@ -159,29 +195,58 @@ async def _generate_audio_async(
     lines: list[tuple[str, str]],
     voice_map: dict[str, str],
     rate: str = "+0%",
-) -> bytes:
-    """Generate a combined MP3 from dialogue lines, returning raw bytes."""
+) -> tuple[bytes, list[dict]]:
+    """Generate a combined MP3 from dialogue lines.
+
+    Returns (mp3_bytes, timing) where timing is a list of per-line dicts
+    with word-level start/end times relative to the combined audio.
+    """
+    silence_s = PAUSE_BETWEEN_LINES_MS / 1000.0
+    timing: list[dict] = []
+
     with tempfile.TemporaryDirectory() as tmpdir:
         silence_path = _make_silence_mp3(PAUSE_BETWEEN_LINES_MS, tmpdir)
         segment_paths: list[str] = []
+        cumulative_offset = 0.0
 
         for i, (speaker, text) in enumerate(lines):
             voice = voice_map.get(speaker, DEFAULT_VOICE_ROTATION[0])
-            mp3_bytes = await _synthesize_line(text, voice, rate)
+            mp3_bytes, word_boundaries = await _synthesize_line(text, voice, rate)
 
             seg_path = os.path.join(tmpdir, f"line_{i:04d}.mp3")
             with open(seg_path, "wb") as f:
                 f.write(mp3_bytes)
             segment_paths.append(seg_path)
 
+            seg_duration = _get_duration_s(seg_path)
+
+            shifted_words = []
+            for wb in word_boundaries:
+                shifted_words.append({
+                    "text": wb["text"],
+                    "start": round(cumulative_offset + wb["start"], 3),
+                    "end": round(cumulative_offset + wb["end"], 3),
+                })
+
+            timing.append({
+                "line": i,
+                "speaker": speaker,
+                "text": text,
+                "start": round(cumulative_offset, 3),
+                "end": round(cumulative_offset + seg_duration, 3),
+                "words": shifted_words,
+            })
+
+            cumulative_offset += seg_duration
             if i < len(lines) - 1:
                 segment_paths.append(silence_path)
+                cumulative_offset += silence_s
 
         out_path = os.path.join(tmpdir, "combined.mp3")
         _concat_mp3_files(segment_paths, out_path)
 
         with open(out_path, "rb") as f:
-            return f.read()
+            return f.read(), timing
 
 
 def generate_audio(
@@ -189,17 +254,17 @@ def generate_audio(
     voice_map: dict[str, str],
     rate: str = "+0%",
     output_path: Optional[str] = None,
-) -> bytes:
+) -> tuple[bytes, list[dict]]:
     """Synchronous wrapper that generates combined MP3 audio.
 
     If *output_path* is given the MP3 is also written to disk.
-    Returns the raw MP3 bytes either way.
+    Returns (mp3_bytes, timing) where timing carries per-line word offsets.
     """
-    mp3_bytes = asyncio.run(_generate_audio_async(lines, voice_map, rate))
+    mp3_bytes, timing = asyncio.run(_generate_audio_async(lines, voice_map, rate))
 
     if output_path:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(mp3_bytes)
 
-    return mp3_bytes
+    return mp3_bytes, timing
