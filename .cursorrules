@@ -38,7 +38,7 @@ python generate_all.py --only=01     # just one conversation
 
 The app is deployed on Render (free tier).
 
-- **Live URL**: https://chinese-audio-practice.onrender.com
+- **Live URL**: https://chinese-dialogue-audio.onrender.com/
 - **Config**: `render.yaml` (Blueprint spec — auto-detected by Render)
 - **WSGI server**: gunicorn (`gunicorn app:app`)
 - **Auto-deploy**: Pushes to the main branch on GitHub trigger a redeploy
