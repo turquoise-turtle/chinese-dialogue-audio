@@ -249,8 +249,29 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
-    .pinyin-overlay.visible { display: block; }
+    .pinyin-overlay.visible { display: block; cursor: text; }
     .pinyin-overlay.visible + textarea { display: none; }
+
+    .pinyin-overlay.visible,
+    .highlight-overlay.visible { position: relative; }
+
+    .pinyin-overlay.visible::after,
+    .highlight-overlay.visible::after {
+      content: "click here or start typing to edit";
+      position: absolute;
+      bottom: 6px;
+      right: 10px;
+      font-size: .65rem;
+      color: var(--text2);
+      opacity: 0;
+      transition: opacity .2s;
+      pointer-events: none;
+    }
+
+    .text-wrapper:hover > .pinyin-overlay.visible::after,
+    .text-wrapper:hover > .highlight-overlay.visible::after {
+      opacity: .6;
+    }
 
     .pinyin-overlay ruby { margin: 0 .02em; }
     .pinyin-overlay rt {
@@ -297,7 +318,7 @@
       white-space: pre-wrap;
     }
 
-    .highlight-overlay.visible { display: block; }
+    .highlight-overlay.visible { display: block; cursor: text; }
     .highlight-overlay.visible ~ .pinyin-overlay,
     .highlight-overlay.visible ~ textarea { display: none; }
 
@@ -853,14 +874,45 @@
 
     pinyinOverlay.addEventListener("mouseup", (e) => {
       const sel = getSelectedChineseOnly();
-      if (sel) showTranslateTip(sel, e.clientX, e.clientY);
-      else hideTranslateTip();
+      if (sel) { showTranslateTip(sel, e.clientX, e.clientY); return; }
+      hideTranslateTip();
+      dismissOverlaysAndEdit();
     });
 
     highlightOverlay.addEventListener("mouseup", (e) => {
       const sel = getSelectedChineseOnly();
-      if (sel) showTranslateTip(sel, e.clientX, e.clientY);
-      else hideTranslateTip();
+      if (sel) { showTranslateTip(sel, e.clientX, e.clientY); return; }
+      hideTranslateTip();
+      dismissOverlaysAndEdit();
+    });
+
+    function dismissOverlaysAndEdit() {
+      let changed = false;
+      if (pinyinVisible) {
+        pinyinVisible = false;
+        pinyinBtn.textContent = "Show Pinyin";
+        pinyinBtn.classList.remove("active");
+        changed = true;
+      }
+      if (highlightEnabled) {
+        highlightEnabled = false;
+        highlightBtn.textContent = "Highlight Words";
+        highlightBtn.classList.remove("active");
+        changed = true;
+      }
+      if (changed) {
+        renderDisplay().then(() => dialogueText.focus());
+      }
+      return changed;
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (!pinyinVisible && !highlightEnabled) return;
+      if (document.activeElement === dialogueText) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+        dismissOverlaysAndEdit();
+      }
     });
 
     document.addEventListener("mousedown", (e) => {
