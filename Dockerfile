@@ -1,5 +1,5 @@
 # Used by Hugging Face Spaces (Docker SDK). Render uses render.yaml instead.
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
