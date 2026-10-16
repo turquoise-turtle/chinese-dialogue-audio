@@ -11,7 +11,9 @@ license: mit
 
 # Chinese Audio Practice Generator
 
-**[Try the live demo](https://chinese-dialogue-audio.onrender.com/)**
+**[Try the live demo](https://chinese-audio-practice.onrender.com/)**
+
+Forked from [maxchalabi/chinese-dialogue-audio](https://github.com/maxchalabi/chinese-dialogue-audio).
 
 A lightweight web app that turns Chinese dialogue text into multi-speaker MP3 audio. Built for my own Mandarin listening practice — I'm learning from scratch and wanted a fast way to generate audio from the conversations and vocabulary I'm studying.
 
@@ -41,7 +43,7 @@ Requires **Python 3.9+**. No ffmpeg or other system packages needed.
 
 ```bash
 # Clone the repo
-git clone https://github.com/maxchalabi/chinese-dialogue-audio.git
+git clone https://github.com/turquoise-turtle/chinese-dialogue-audio.git
 cd chinese-dialogue-audio
 
 # Create a virtual environment and install dependencies

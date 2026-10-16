@@ -34,7 +34,7 @@ python app.py
 
 The app is deployed on Render (free tier).
 
-- **Live URL**: https://chinese-dialogue-audio.onrender.com/
+- **Live URL**: https://chinese-audio-practice.onrender.com/
 - **Config**: `render.yaml` (Blueprint spec — auto-detected by Render)
 - **WSGI server**: gunicorn (`gunicorn app:app`, settings in `gunicorn.conf.py`)
 - **Hugging Face Spaces**: `Dockerfile` plus the README front matter (`sdk: docker`, port 7860)
