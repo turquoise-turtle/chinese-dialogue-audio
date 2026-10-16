@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chinese Audio Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232733;
+      --border: #2e3345;
+      --text: #e4e6ed;
+      --text2: #9298ad;
+      --accent: #6c8cff;
+      --accent-dim: #4a62b3;
+      --red: #ff6b6b;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    h1 { font-size: 1.2rem; margin-bottom: 1rem; }
+
+    input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      padding: .6rem .75rem;
+    }
+
+    input:focus { outline: none; border-color: var(--accent); }
+
+    button {
+      width: 100%;
+      margin-top: 1rem;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: .95rem;
+      font-weight: 600;
+      padding: .65rem;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--accent-dim); }
+
+    .error { color: var(--red); font-size: .85rem; margin-top: .75rem; }
+  </style>
+</head>
+<body>
+  <form method="post" action="{{ url_for('login') }}">
+    <h1>Chinese Audio Generator</h1>
+    <input type="password" name="passcode" placeholder="Passcode" aria-label="Passcode" autofocus required>
+    <button type="submit">Enter</button>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  </form>
+</body>
+</html>

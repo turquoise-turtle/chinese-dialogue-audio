@@ -486,7 +486,7 @@
     <div class="translate-tip-en" id="tipEn"></div>
   </div>
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     const VOICES = {{ voices | tojson }};
 
     const dialogueText = document.getElementById("dialogueText");
@@ -508,7 +508,7 @@
     const tipEn = document.getElementById("tipEn");
 
     let currentVoiceMap = {};
-    let currentAudioId = null;
+    let currentAudioUrl = null;
     let parseTimeout = null;
     let pinyinVisible = false;
     let highlightEnabled = false;
@@ -516,6 +516,15 @@
     let pinyinCache = null;
     let translateAbort = null;
     let lastActiveHw = null;
+
+    async function apiFetch(url, options) {
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        location.reload();
+        throw new Error("Passcode required");
+      }
+      return res;
+    }
 
     rateSlider.addEventListener("input", () => {
       const v = parseInt(rateSlider.value);
@@ -561,7 +570,7 @@
         return;
       }
 
-      const res = await fetch("/parse", {
+      const res = await apiFetch("/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -579,8 +588,8 @@
       for (const speaker of data.speakers) {
         const defaultVoice = data.defaults[speaker] || Object.keys(VOICES)[0];
         html += `<div class="voice-row">
-          <label>${speaker}</label>
-          <select data-speaker="${speaker}" onchange="updateVoiceMap(this)">`;
+          <label>${escHtml(speaker)}</label>
+          <select data-speaker="${escHtml(speaker)}">`;
         for (const [id, label] of Object.entries(VOICES)) {
           const sel = id === defaultVoice ? " selected" : "";
           html += `<option value="${id}"${sel}>${label}</option>`;
@@ -591,9 +600,10 @@
       generateBtn.disabled = false;
     }
 
-    function updateVoiceMap(el) {
-      currentVoiceMap[el.dataset.speaker] = el.value;
-    }
+    voiceConfig.addEventListener("change", (e) => {
+      const el = e.target;
+      if (el.matches("select[data-speaker]")) currentVoiceMap[el.dataset.speaker] = el.value;
+    });
 
     generateBtn.addEventListener("click", async () => {
       const text = dialogueText.value.trim();
@@ -618,22 +628,24 @@
       try {
         const rate = (parseInt(rateSlider.value) >= 0 ? "+" : "") + rateSlider.value + "%";
 
-        const res = await fetch("/generate", {
+        const res = await apiFetch("/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, voice_map: currentVoiceMap, rate }),
         });
 
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Generation failed");
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Generation failed (HTTP " + res.status + ")");
         }
 
         const data = await res.json();
-        currentAudioId = data.id;
+        const bytes = Uint8Array.from(atob(data.audio), (c) => c.charCodeAt(0));
+        if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+        currentAudioUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
         timingData = data.timing;
 
-        audioPlayer.src = "/audio/" + data.id;
+        audioPlayer.src = currentAudioUrl;
         playerArea.classList.add("visible");
         highlightBtn.disabled = false;
         status.className = "status success";
@@ -734,7 +746,8 @@
     }
 
     function escHtml(s) {
-      return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     }
 
     async function fetchPinyinLines() {
@@ -742,7 +755,7 @@
       const text = dialogueText.value.trim();
       if (!text) return null;
       try {
-        const res = await fetch("/pinyin", {
+        const res = await apiFetch("/pinyin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),
@@ -841,7 +854,7 @@
 
       translateAbort = new AbortController();
       try {
-        const res = await fetch("/translate", {
+        const res = await apiFetch("/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: cleaned }),
@@ -922,9 +935,9 @@
 
     // Download
     downloadBtn.addEventListener("click", () => {
-      if (!currentAudioId) return;
+      if (!currentAudioUrl) return;
       const a = document.createElement("a");
-      a.href = "/audio/" + currentAudioId;
+      a.href = currentAudioUrl;
       a.download = "dialogue.mp3";
       a.click();
     });
@@ -933,7 +946,7 @@
     shuffleBtn.addEventListener("click", async () => {
       shuffleBtn.disabled = true;
       try {
-        const res = await fetch("/random-conversation");
+        const res = await apiFetch("/random-conversation");
         const data = await res.json();
         dialogueText.value = data.text;
         resetOverlays();

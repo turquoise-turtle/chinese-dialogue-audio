@@ -1,3 +1,14 @@
+---
+title: Chinese Audio Practice
+emoji: 🎧
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Chinese Audio Practice Generator
 
 **[Try the live demo](https://chinese-dialogue-audio.onrender.com/)**
@@ -20,13 +31,13 @@ This way I get unlimited listening practice that's always at my level.
 - **Highlight Words** — Toggle character-by-character highlighting that follows along as the audio plays, so you can read along in real time. Works with or without pinyin.
 - **Inline pinyin** — Toggle pinyin with tone marks above every character. Tone sandhi rules are applied automatically (3rd+3rd, 一, 不) and highlighted in amber so you learn the actual spoken tones.
 - **Select-to-translate** — Highlight any word or phrase in the text to see an instant English translation tooltip.
-- **Conversation library** — 39 built-in practice dialogues covering shopping, greetings, currency exchange, and more. Hit **Shuffle** to load a random one.
+- **Conversation library** — 45 built-in practice texts (dialogues and short single-speaker passages) covering shopping, greetings, currency exchange, and more. Hit **Shuffle** to load a random one.
 - **Speed control** — Slow down or speed up speech from -50% to +50%.
-- **No API keys needed** — Everything runs locally for free.
+- **No API keys needed** — Free to run locally or on a free hosting tier.
 
 ## Quick start
 
-Requires **Python 3.9+**. No need to install ffmpeg — it's bundled automatically.
+Requires **Python 3.9+**. No ffmpeg or other system packages needed.
 
 ```bash
 # Clone the repo
@@ -64,18 +75,6 @@ Open **http://localhost:5000** in your browser.
 
 Both Chinese colon (：) and ASCII colon (:) work.
 
-### CLI batch generation
-
-Generate MP3s for the 16 pre-built conversations in `conversations.py`:
-
-```bash
-python generate_all.py                # all conversations
-python generate_all.py --rate=-15%    # slower for beginners
-python generate_all.py --only=01      # just one conversation
-```
-
-Output goes to the `output/` folder.
-
 ## Generating practice conversations
 
 I use LLMs to create conversations tailored to my current level. Here's a sample prompt I give to DeepSeek:
@@ -95,20 +94,40 @@ The tool then turns those dialogues into audio I can listen to on repeat.
 | zh-CN-YunjianNeural | Male | Sporty |
 | zh-CN-YunxiaNeural | Male | Boyish |
 
+## Deployment
+
+The app runs under gunicorn using the settings in `gunicorn.conf.py` (4 threads, 120s timeout). `GET /healthz` returns `{"status": "ok"}` for host health checks.
+
+### Render (free tier)
+
+`render.yaml` is a Blueprint: in the Render dashboard choose **New → Blueprint** and point it at your GitHub repo. Pushes to the main branch redeploy automatically. The free tier sleeps after 15 minutes idle, so the first request after that takes about 30 seconds.
+
+### Hugging Face Spaces
+
+Create a Space with the **Docker** SDK and push this repo to it. The front matter at the top of this README tells Spaces to build the `Dockerfile` and serve port 7860. Use the direct `https://<user>-<space>.hf.space` URL if your browser blocks the passcode cookie inside the huggingface.co page.
+
+### Passcode (optional)
+
+Set the `APP_PASSCODE` environment variable (on Render: the service's **Environment** tab; on Spaces: **Settings → Variables and secrets**, as a secret) to require a passcode before the app can be used. Visitors enter it once and stay signed in for 30 days. Leave it unset to keep the app open.
+
+### If audio generation starts failing
+
+edge-tts talks to an unofficial Microsoft endpoint that occasionally changes. A `403` from `speech.platform.bing.com` in the logs usually means `edge-tts` needs upgrading: bump its version in `requirements.txt` and redeploy.
+
 ## Project structure
 
 ```
 ├── app.py                     # Flask web server
 ├── tts_engine.py              # Core TTS: parsing, voice assignment, audio generation
-├── conversation_library.py    # 39 built-in practice dialogues (used by web UI shuffle)
-├── conversations.py           # 16 pre-built dialogues (used by CLI batch generator)
-├── generate_all.py            # CLI batch generator
+├── conversation_library.py    # 45 built-in practice texts (used by web UI shuffle)
 ├── templates/
-│   └── index.html             # Web UI (single page)
-├── run.sh                     # Quick-start script
+│   ├── index.html             # Web UI (single page)
+│   └── login.html             # Passcode page (only used when APP_PASSCODE is set)
+├── gunicorn.conf.py           # Production server settings (Render and Docker)
 ├── render.yaml                # Render deployment config
-├── requirements.txt           # Pinned Python dependencies
-└── output/                    # Generated MP3s (gitignored)
+├── Dockerfile                 # Hugging Face Spaces deployment
+├── run.sh                     # Quick-start script
+└── requirements.txt           # Pinned Python dependencies
 ```
 
 ## Tech stack
@@ -116,7 +135,6 @@ The tool then turns those dialogues into audio I can listen to on repeat.
 - **[edge-tts](https://github.com/rany2/edge-tts)** — Free Microsoft Edge text-to-speech with high-quality Chinese voices
 - **[Flask](https://flask.palletsprojects.com/)** — Lightweight web framework
 - **[pypinyin](https://github.com/mozillazg/python-pinyin)** — Chinese character to pinyin conversion
-- **[imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg)** — Bundled ffmpeg for audio concatenation
 - **Google Translate** — Used for the select-to-translate feature via the same public endpoint that translate.google.com uses (no API key). This is an unofficial endpoint and may stop working if Google changes it.
 
 ## License

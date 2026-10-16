@@ -4,20 +4,10 @@ import asyncio
 import io
 import os
 import re
-import shutil
-import subprocess
-import tempfile
 from typing import Optional
 
 import edge_tts
-
-# Locate ffmpeg binary: prefer imageio-ffmpeg bundle, then system ffmpeg.
-_FFMPEG = shutil.which("ffmpeg")
-try:
-    import imageio_ffmpeg
-    _FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-except ImportError:
-    pass
+from edge_tts.exceptions import NoAudioReceived
 
 VOICES = {
     "zh-CN-XiaoxiaoNeural": "Xiaoxiao (female, natural)",
@@ -42,29 +32,21 @@ NARRATOR_VOICE = "zh-CN-YunyangNeural"
 PAUSE_BETWEEN_LINES_MS = 900
 
 
-def _get_duration_s(path: str) -> float:
-    """Return the duration of an audio file in seconds.
+# edge-tts always returns constant-bitrate MP3 (24 kHz, 48 kbps, mono), so a
+# segment's duration is its byte length divided by the byte rate, and segments
+# can be joined by concatenating bytes. No ffmpeg needed.
+_MP3_BYTES_PER_SECOND = 48_000 // 8
+_FRAME_SECONDS = 576 / 24_000  # one MPEG-2 Layer III frame
 
-    Uses ffmpeg (always available via imageio-ffmpeg) by running a null
-    transcode and parsing the 'time=' progress line from stderr.
-    """
-    if not _FFMPEG:
-        return 0.0
-    result = subprocess.run(
-        [_FFMPEG, "-i", path, "-f", "null", "-"],
-        capture_output=True, text=True,
-    )
-    for line in reversed(result.stderr.splitlines()):
-        if "time=" in line:
-            for part in line.split():
-                if part.startswith("time="):
-                    ts = part[5:]
-                    try:
-                        h, m, s = ts.split(":")
-                        return int(h) * 3600 + int(m) * 60 + float(s)
-                    except (ValueError, TypeError):
-                        pass
-    return 0.0
+# A silent frame in the same format: the header edge-tts emits, followed by
+# zeroed side info and main data, which decodes to silence.
+_SILENT_FRAME = b"\xff\xf3\x64\xc4" + bytes(140)
+
+_PAUSE_MP3 = _SILENT_FRAME * round(PAUSE_BETWEEN_LINES_MS / 1000 / _FRAME_SECONDS)
+_PAUSE_S = len(_PAUSE_MP3) / _MP3_BYTES_PER_SECOND
+
+MAX_CONCURRENT_LINES = 5
+MAX_ATTEMPTS = 3
 
 
 def parse_dialogue(text: str) -> list[tuple[str, str]]:
@@ -128,11 +110,14 @@ def assign_default_voices(speakers: list[str]) -> dict[str, str]:
     return voice_map
 
 
-async def _synthesize_line(
+async def _stream_line(
     text: str, voice: str, rate: str,
 ) -> tuple[bytes, list[dict]]:
     """Generate MP3 bytes and word-boundary timing for a single line."""
-    communicate = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
+    communicate = edge_tts.Communicate(
+        text, voice, rate=rate, boundary="WordBoundary",
+        connect_timeout=10, receive_timeout=30,
+    )
     buffer = io.BytesIO()
     word_boundaries: list[dict] = []
     async for chunk in communicate.stream():
@@ -149,46 +134,21 @@ async def _synthesize_line(
     return buffer.getvalue(), word_boundaries
 
 
-def _make_silence_mp3(duration_ms: int, tmpdir: str) -> str:
-    """Create a short silent MP3 file and return its path."""
-    path = os.path.join(tmpdir, "_silence.mp3")
-    if os.path.exists(path):
-        return path
-    duration_s = duration_ms / 1000.0
-    subprocess.run(
-        [
-            _FFMPEG, "-y", "-f", "lavfi",
-            "-i", f"anullsrc=r=24000:cl=mono",
-            "-t", str(duration_s),
-            "-c:a", "libmp3lame", "-b:a", "48k",
-            path,
-        ],
-        capture_output=True,
-        check=True,
-    )
-    return path
-
-
-def _concat_mp3_files(file_paths: list[str], output_path: str) -> None:
-    """Concatenate MP3 files using ffmpeg's concat demuxer."""
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
-        for p in file_paths:
-            f.write(f"file '{p}'\n")
-        list_path = f.name
-
-    try:
-        subprocess.run(
-            [
-                _FFMPEG, "-y", "-f", "concat", "-safe", "0",
-                "-i", list_path,
-                "-c:a", "libmp3lame", "-b:a", "48k",
-                output_path,
-            ],
-            capture_output=True,
-            check=True,
-        )
-    finally:
-        os.unlink(list_path)
+async def _synthesize_line(
+    text: str, voice: str, rate: str,
+) -> tuple[bytes, list[dict]]:
+    """Like _stream_line, retrying transient failures with backoff."""
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            return await _stream_line(text, voice, rate)
+        except NoAudioReceived:
+            # Nothing speakable in the line (e.g. only punctuation).
+            return b"", []
+        except Exception:
+            if attempt == MAX_ATTEMPTS:
+                raise
+            await asyncio.sleep(0.5 * 2 ** (attempt - 1))
+    raise AssertionError("unreachable")
 
 
 async def _generate_audio_async(
@@ -198,55 +158,50 @@ async def _generate_audio_async(
 ) -> tuple[bytes, list[dict]]:
     """Generate a combined MP3 from dialogue lines.
 
-    Returns (mp3_bytes, timing) where timing is a list of per-line dicts
-    with word-level start/end times relative to the combined audio.
+    Lines are synthesized concurrently. Returns (mp3_bytes, timing) where
+    timing is a list of per-line dicts with word-level start/end times
+    relative to the combined audio.
     """
-    silence_s = PAUSE_BETWEEN_LINES_MS / 1000.0
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LINES)
+
+    async def synthesize(speaker: str, text: str) -> tuple[bytes, list[dict]]:
+        voice = voice_map.get(speaker, DEFAULT_VOICE_ROTATION[0])
+        async with semaphore:
+            return await _synthesize_line(text, voice, rate)
+
+    results = await asyncio.gather(*(synthesize(s, t) for s, t in lines))
+
+    parts: list[bytes] = []
     timing: list[dict] = []
+    cumulative_offset = 0.0
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        silence_path = _make_silence_mp3(PAUSE_BETWEEN_LINES_MS, tmpdir)
-        segment_paths: list[str] = []
-        cumulative_offset = 0.0
+    for i, ((speaker, text), (mp3_bytes, word_boundaries)) in enumerate(
+        zip(lines, results)
+    ):
+        if i > 0:
+            parts.append(_PAUSE_MP3)
+            cumulative_offset += _PAUSE_S
+        parts.append(mp3_bytes)
+        seg_duration = len(mp3_bytes) / _MP3_BYTES_PER_SECOND
 
-        for i, (speaker, text) in enumerate(lines):
-            voice = voice_map.get(speaker, DEFAULT_VOICE_ROTATION[0])
-            mp3_bytes, word_boundaries = await _synthesize_line(text, voice, rate)
-
-            seg_path = os.path.join(tmpdir, f"line_{i:04d}.mp3")
-            with open(seg_path, "wb") as f:
-                f.write(mp3_bytes)
-            segment_paths.append(seg_path)
-
-            seg_duration = _get_duration_s(seg_path)
-
-            shifted_words = []
-            for wb in word_boundaries:
-                shifted_words.append({
+        timing.append({
+            "line": i,
+            "speaker": speaker,
+            "text": text,
+            "start": round(cumulative_offset, 3),
+            "end": round(cumulative_offset + seg_duration, 3),
+            "words": [
+                {
                     "text": wb["text"],
                     "start": round(cumulative_offset + wb["start"], 3),
                     "end": round(cumulative_offset + wb["end"], 3),
-                })
+                }
+                for wb in word_boundaries
+            ],
+        })
+        cumulative_offset += seg_duration
 
-            timing.append({
-                "line": i,
-                "speaker": speaker,
-                "text": text,
-                "start": round(cumulative_offset, 3),
-                "end": round(cumulative_offset + seg_duration, 3),
-                "words": shifted_words,
-            })
-
-            cumulative_offset += seg_duration
-            if i < len(lines) - 1:
-                segment_paths.append(silence_path)
-                cumulative_offset += silence_s
-
-        out_path = os.path.join(tmpdir, "combined.mp3")
-        _concat_mp3_files(segment_paths, out_path)
-
-        with open(out_path, "rb") as f:
-            return f.read(), timing
+    return b"".join(parts), timing
 
 
 def generate_audio(

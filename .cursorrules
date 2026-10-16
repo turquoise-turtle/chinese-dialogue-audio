@@ -23,8 +23,11 @@ python app.py
 - `tts_engine.py` — Core TTS logic: parse_dialogue, detect_speakers, generate_audio
 - `conversation_library.py` — 45 items for the web UI random-shuffle library (32 full dialogues + 10 short dialogues + 5 single-speaker texts)
 - `templates/index.html` — Web UI (single page, loads a random conversation on each visit)
+- `templates/login.html` — Passcode page, used only when `APP_PASSCODE` is set
+- `gunicorn.conf.py` — Production server settings shared by Render and Docker
 - `render.yaml` — Render deployment config (Blueprint spec)
-- `requirements.txt` — edge-tts, flask, gunicorn, imageio-ffmpeg, pypinyin
+- `Dockerfile` — Hugging Face Spaces (Docker SDK) deployment
+- `requirements.txt` — edge-tts, flask, gunicorn, pypinyin
 - `venv/` — Python virtual environment
 
 ## Deployment
@@ -33,7 +36,9 @@ The app is deployed on Render (free tier).
 
 - **Live URL**: https://chinese-dialogue-audio.onrender.com/
 - **Config**: `render.yaml` (Blueprint spec — auto-detected by Render)
-- **WSGI server**: gunicorn (`gunicorn app:app`)
+- **WSGI server**: gunicorn (`gunicorn app:app`, settings in `gunicorn.conf.py`)
+- **Hugging Face Spaces**: `Dockerfile` plus the README front matter (`sdk: docker`, port 7860)
+- **Passcode**: optional `APP_PASSCODE` env var gates every route except `/login` and `/healthz`
 - **Auto-deploy**: Pushes to the main branch on GitHub trigger a redeploy
 - **Cold starts**: Free tier spins down after 15 min of inactivity; first request takes ~30s
 
@@ -58,7 +63,9 @@ Both Chinese colon (：) and ASCII colon (:) are supported.
 
 ## Audio Generation Architecture
 
-The `/generate` endpoint returns JSON `{ id, timing }` instead of raw audio bytes. The MP3 is stored server-side in an in-memory dict (5-min TTL) and served via `GET /audio/<id>`. The `timing` array contains per-line objects with word-level `start`/`end` times (seconds) relative to the combined audio, computed from edge-tts `WordBoundary` events (requires `boundary="WordBoundary"` kwarg) + ffmpeg-based segment duration parsing + cumulative silence offsets. Note: `ffprobe` is NOT available via imageio-ffmpeg, so `_get_duration_s` uses `ffmpeg -i ... -f null -` and parses the `time=` line from stderr.
+The `/generate` endpoint returns JSON `{ audio, timing }`: `audio` is the base64-encoded MP3, which the page turns into a Blob URL for playback and download, so the server keeps no state. The `timing` array contains per-line objects with word-level `start`/`end` times (seconds) relative to the combined audio, computed from edge-tts `WordBoundary` events (requires `boundary="WordBoundary"` kwarg) plus segment durations and the fixed pause between lines.
+
+Lines are synthesized concurrently (up to 5 at once) with retries. edge-tts always returns constant-bitrate MP3 (24 kHz, 48 kbps, mono), so a segment's duration is `len(bytes) / 6000` and segments are joined by byte concatenation with pre-built silent frames between them. No ffmpeg is used.
 
 `generate_audio()` in `tts_engine.py` returns `(mp3_bytes, timing)`.
 

@@ -2,8 +2,13 @@ services:
   - type: web
     name: chinese-audio-practice
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
+    healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      # Optional: set a passcode in the Render dashboard to keep the app private.
+      - key: APP_PASSCODE
+        sync: false

@@ -1,15 +1,19 @@
-import io
+import base64
+import hashlib
+import hmac
+import html
 import json
 import os
 import random
-import threading
-import time
+import re
+import secrets
 import urllib.parse
 import urllib.request
-import uuid
 
-from flask import Flask, render_template, request, jsonify, send_file, abort
+from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 from pypinyin import pinyin, Style
+from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from tts_engine import (
     parse_dialogue,
@@ -21,21 +25,103 @@ from tts_engine import (
 from conversation_library import LIBRARY
 
 app = Flask(__name__)
+# Render and Hugging Face terminate HTTPS at a proxy; trust its X-Forwarded-Proto
+# so request.is_secure is accurate.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
 
-_audio_store: dict[str, tuple[bytes, float]] = {}
-_AUDIO_TTL = 300  # seconds
-_store_lock = threading.Lock()
+# Optional passcode gate. When APP_PASSCODE is unset, the app is open to anyone.
+PASSCODE = os.environ.get("APP_PASSCODE", "")
+_AUTH_COOKIE = "auth"
+_AUTH_MAX_AGE = 30 * 24 * 3600
+_OPEN_ENDPOINTS = {"login", "healthz", "static"}
+
+_RATE_RE = re.compile(r"^[+-]\d{1,2}%$")
+_MAX_RATE = 50
 
 
-def _store_audio(mp3_bytes: bytes) -> str:
-    """Store MP3 bytes under a UUID and return the key."""
-    key = uuid.uuid4().hex
-    with _store_lock:
-        _audio_store[key] = (mp3_bytes, time.time())
-        expired = [k for k, (_, ts) in _audio_store.items() if time.time() - ts > _AUDIO_TTL]
-        for k in expired:
-            del _audio_store[k]
-    return key
+def _auth_token() -> str:
+    """Cookie value proving the passcode was entered; changes with the passcode."""
+    return hmac.new(PASSCODE.encode(), b"chinese-dialogue-audio", hashlib.sha256).hexdigest()
+
+
+def _csp_nonce() -> str:
+    if "csp_nonce" not in g:
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
+app.jinja_env.globals["csp_nonce"] = _csp_nonce
+
+
+@app.before_request
+def require_passcode():
+    if not PASSCODE or request.endpoint in _OPEN_ENDPOINTS:
+        return None
+    if hmac.compare_digest(request.cookies.get(_AUTH_COOKIE, ""), _auth_token()):
+        return None
+    if request.method == "GET" and request.endpoint == "index":
+        return redirect(url_for("login"))
+    return jsonify({"error": "Passcode required"}), 401
+
+
+@app.after_request
+def security_headers(resp):
+    nonce = g.get("csp_nonce")
+    script_src = f"'nonce-{nonce}'" if nonce else "'none'"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        f"script-src {script_src}; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "media-src 'self' blob:; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "form-action 'self'; "
+        # Hugging Face Spaces shows the app in an iframe on huggingface.co.
+        "frame-ancestors 'self' https://huggingface.co"
+    )
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "same-origin"
+    return resp
+
+
+@app.errorhandler(HTTPException)
+def http_error(e):
+    return jsonify({"error": e.description}), e.code
+
+
+def _json_body() -> dict:
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _text_field(data: dict) -> str:
+    text = data.get("text", "")
+    return text if isinstance(text, str) else ""
+
+
+@app.route("/healthz")
+def healthz():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not PASSCODE:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        entered = request.form.get("passcode", "").encode()
+        if hmac.compare_digest(entered, PASSCODE.encode()):
+            resp = redirect(url_for("index"))
+            # SameSite=None lets the cookie work inside the Hugging Face iframe.
+            resp.set_cookie(
+                _AUTH_COOKIE, _auth_token(), max_age=_AUTH_MAX_AGE, httponly=True,
+                secure=request.is_secure,
+                samesite="None" if request.is_secure else "Lax",
+            )
+            return resp
+        return render_template("login.html", error="Wrong passcode"), 401
+    return render_template("login.html", error=None)
 
 
 @app.route("/")
@@ -52,7 +138,7 @@ def random_conversation():
 
 @app.route("/parse", methods=["POST"])
 def parse():
-    text = request.json.get("text", "")
+    text = _text_field(_json_body())
     lines = parse_dialogue(text)
     speakers = detect_speakers(lines)
     defaults = assign_default_voices(speakers)
@@ -61,33 +147,34 @@ def parse():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    text = request.json.get("text", "")
-    voice_map = request.json.get("voice_map", {})
-    rate = request.json.get("rate", "+0%")
+    data = _json_body()
+    text = _text_field(data)
+    voice_map = data.get("voice_map") or {}
+    rate = data.get("rate", "+0%")
+
+    if not isinstance(voice_map, dict) or not all(
+        isinstance(v, str) and v in VOICES for v in voice_map.values()
+    ):
+        return jsonify({"error": "Unknown voice"}), 400
+    if not isinstance(rate, str) or not _RATE_RE.match(rate) or abs(int(rate[:-1])) > _MAX_RATE:
+        return jsonify({"error": f"Rate must be between -{_MAX_RATE}% and +{_MAX_RATE}%"}), 400
 
     lines = parse_dialogue(text)
     if not lines:
         return jsonify({"error": "No dialogue lines found"}), 400
 
-    mp3_bytes, timing = generate_audio(lines, voice_map, rate=rate)
-    audio_id = _store_audio(mp3_bytes)
+    try:
+        mp3_bytes, timing = generate_audio(lines, voice_map, rate=rate)
+    except Exception:
+        app.logger.exception("Audio generation failed")
+        return jsonify({"error": "The speech service failed, please try again"}), 502
 
-    return jsonify({"id": audio_id, "timing": timing})
-
-
-@app.route("/audio/<audio_id>")
-def serve_audio(audio_id):
-    with _store_lock:
-        entry = _audio_store.get(audio_id)
-    if not entry:
-        abort(404)
-    mp3_bytes, _ = entry
-    return send_file(
-        io.BytesIO(mp3_bytes),
-        mimetype="audio/mpeg",
-        as_attachment=False,
-        download_name="dialogue.mp3",
-    )
+    # Audio travels in the response itself, so no server-side storage is needed
+    # and any worker can serve any request.
+    return jsonify({
+        "audio": base64.b64encode(mp3_bytes).decode("ascii"),
+        "timing": timing,
+    })
 
 
 _TONE_MARKS = {
@@ -176,7 +263,7 @@ def _annotate_pinyin(text: str) -> str:
     result = []
     for t in tokens:
         if not t.get("zh"):
-            result.append(t["c"])
+            result.append(html.escape(t["c"]))
             continue
         display = _py3_to_display(t["py3"])
         if t["sandhi"]:
@@ -193,7 +280,7 @@ def _annotate_pinyin(text: str) -> str:
 
 @app.route("/pinyin", methods=["POST"])
 def add_pinyin():
-    text = request.json.get("text", "")
+    text = _text_field(_json_body())
     lines = text.strip().splitlines()
     annotated = []
     for line in lines:
@@ -214,7 +301,7 @@ def _google_translate(text: str, src: str = "zh-CN", tgt: str = "en") -> str:
 
 @app.route("/translate", methods=["POST"])
 def translate():
-    text = request.json.get("text", "")
+    text = _text_field(_json_body())
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     translated = []
     for line in lines:
@@ -226,4 +313,7 @@ def translate():
 
 
 if __name__ == "__main__":
-    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+        port=int(os.environ.get("PORT", "5000")),
+    )
