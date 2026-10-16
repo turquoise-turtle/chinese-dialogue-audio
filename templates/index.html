@@ -834,6 +834,17 @@
       if (lastActiveHw) { lastActiveHw.classList.remove("hw-active"); lastActiveHw = null; }
     });
 
+    // Called from the browser rather than the server: Google blocks this
+    // unofficial endpoint from cloud hosts such as Render, but not from
+    // visitors' own connections.
+    async function googleTranslate(text, signal) {
+      const params = new URLSearchParams({ client: "gtx", sl: "zh-CN", tl: "en", dt: "t", q: text });
+      const res = await fetch("https://translate.googleapis.com/translate_a/single?" + params, { signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      return data[0].map((seg) => seg[0] || "").join("");
+    }
+
     async function showTranslateTip(selectedText, x, y) {
       const cleaned = selectedText.trim();
       if (!cleaned) return;
@@ -854,14 +865,7 @@
 
       translateAbort = new AbortController();
       try {
-        const res = await apiFetch("/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleaned }),
-          signal: translateAbort.signal,
-        });
-        const data = await res.json();
-        tipEn.textContent = (data.lines && data.lines[0]) || cleaned;
+        tipEn.textContent = await googleTranslate(cleaned, translateAbort.signal);
         translateTip.classList.remove("loading");
       } catch (e) {
         if (e.name !== "AbortError") {

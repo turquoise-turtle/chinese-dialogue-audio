@@ -135,7 +135,7 @@ edge-tts talks to an unofficial Microsoft endpoint that occasionally changes. A 
 - **[edge-tts](https://github.com/rany2/edge-tts)** — Free Microsoft Edge text-to-speech with high-quality Chinese voices
 - **[Flask](https://flask.palletsprojects.com/)** — Lightweight web framework
 - **[pypinyin](https://github.com/mozillazg/python-pinyin)** — Chinese character to pinyin conversion
-- **Google Translate** — Used for the select-to-translate feature via the same public endpoint that translate.google.com uses (no API key). This is an unofficial endpoint and may stop working if Google changes it.
+- **Google Translate** — Used for the select-to-translate feature via the same public endpoint that translate.google.com uses (no API key). The browser calls it directly, because Google blocks it from cloud hosts like Render. This is an unofficial endpoint and may stop working if Google changes it.
 
 ## License
 

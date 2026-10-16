@@ -2,13 +2,10 @@ import base64
 import hashlib
 import hmac
 import html
-import json
 import os
 import random
 import re
 import secrets
-import urllib.parse
-import urllib.request
 
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 from pypinyin import pinyin, Style
@@ -71,6 +68,8 @@ def security_headers(resp):
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         f"script-src {script_src}; "
+        # Select-to-translate calls Google directly from the browser.
+        "connect-src 'self' https://translate.googleapis.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "media-src 'self' blob:; "
@@ -286,30 +285,6 @@ def add_pinyin():
     for line in lines:
         annotated.append(_annotate_pinyin(line))
     return jsonify({"html": "<br>".join(annotated)})
-
-
-def _google_translate(text: str, src: str = "zh-CN", tgt: str = "en") -> str:
-    """Call the same Google Translate endpoint the website uses."""
-    url = "https://translate.googleapis.com/translate_a/single?" + urllib.parse.urlencode({
-        "client": "gtx", "sl": src, "tl": tgt, "dt": "t", "q": text,
-    })
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        data = json.loads(resp.read())
-    return "".join(seg[0] for seg in data[0] if seg[0])
-
-
-@app.route("/translate", methods=["POST"])
-def translate():
-    text = _text_field(_json_body())
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-    translated = []
-    for line in lines:
-        try:
-            translated.append(_google_translate(line))
-        except Exception:
-            translated.append(line)
-    return jsonify({"lines": translated})
 
 
 if __name__ == "__main__":
