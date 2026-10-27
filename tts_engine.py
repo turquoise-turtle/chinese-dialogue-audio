@@ -158,7 +158,7 @@ async def _generate_audio_async(
 ) -> tuple[bytes, list[dict]]:
     """Generate a combined MP3 from dialogue lines.
 
-    Lines are synthesized concurrently. Returns (mp3_bytes, timing) where
+    Lines are synthesised concurrently. Returns (mp3_bytes, timing) where
     timing is a list of per-line dicts with word-level start/end times
     relative to the combined audio.
     """

@@ -116,6 +116,16 @@ Set the `APP_PASSCODE` environment variable (on Render: the service's **Environm
 
 edge-tts talks to an unofficial Microsoft endpoint that occasionally changes. A `403` from `speech.platform.bing.com` in the logs usually means `edge-tts` needs upgrading: bump its version in `requirements.txt` and redeploy.
 
+## Maintenance and tests
+
+[MAINTENANCE.md](MAINTENANCE.md) has the monthly, quarterly and yearly checklists, and what to do when something breaks. In short:
+
+```bash
+uv run scripts/smoke_test.py      # check the live site end to end
+uv run scripts/check_updates.py   # newer dependencies and Python support dates
+uv run --python 3.14 --no-project --with-requirements requirements.txt --with pytest pytest   # offline tests
+```
+
 ## Project structure
 
 ```
@@ -129,7 +139,13 @@ edge-tts talks to an unofficial Microsoft endpoint that occasionally changes. A 
 ├── render.yaml                # Render deployment config
 ├── Dockerfile                 # Hugging Face Spaces deployment
 ├── run.sh                     # Quick-start script
-└── requirements.txt           # Pinned Python dependencies
+├── requirements.txt           # Pinned Python dependencies
+├── tests/                     # pytest suite (offline by default; -m live calls Microsoft)
+├── pytest.ini                 # pytest settings
+├── scripts/
+│   ├── smoke_test.py          # End-to-end check of the deployed site
+│   └── check_updates.py       # Dependency and Python support check
+└── MAINTENANCE.md             # Maintenance checklists and fixes
 ```
 
 ## Tech stack

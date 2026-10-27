@@ -28,7 +28,9 @@ python app.py
 - `render.yaml` — Render deployment config (Blueprint spec)
 - `Dockerfile` — Hugging Face Spaces (Docker SDK) deployment
 - `requirements.txt` — edge-tts, flask, gunicorn, pypinyin
-- `venv/` — Python virtual environment
+- `tests/`, `pytest.ini` — pytest suite; offline by default, `-m live` calls Microsoft's speech service
+- `scripts/smoke_test.py` — end-to-end check of the deployed site; `scripts/check_updates.py` — dependency and Python support check
+- `MAINTENANCE.md` — maintenance schedule and fixes for known failure modes
 
 ## Deployment
 
@@ -65,7 +67,7 @@ Both Chinese colon (：) and ASCII colon (:) are supported.
 
 The `/generate` endpoint returns JSON `{ audio, timing }`: `audio` is the base64-encoded MP3, which the page turns into a Blob URL for playback and download, so the server keeps no state. The `timing` array contains per-line objects with word-level `start`/`end` times (seconds) relative to the combined audio, computed from edge-tts `WordBoundary` events (requires `boundary="WordBoundary"` kwarg) plus segment durations and the fixed pause between lines.
 
-Lines are synthesized concurrently (up to 5 at once) with retries. edge-tts always returns constant-bitrate MP3 (24 kHz, 48 kbps, mono), so a segment's duration is `len(bytes) / 6000` and segments are joined by byte concatenation with pre-built silent frames between them. No ffmpeg is used.
+Lines are synthesised concurrently (up to 5 at once) with retries. edge-tts always returns constant-bitrate MP3 (24 kHz, 48 kbps, mono), so a segment's duration is `len(bytes) / 6000` and segments are joined by byte concatenation with pre-built silent frames between them. No ffmpeg is used.
 
 `generate_audio()` in `tts_engine.py` returns `(mp3_bytes, timing)`.
 
