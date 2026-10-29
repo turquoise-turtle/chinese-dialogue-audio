@@ -8,3 +8,6 @@ workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
 threads = 4
 # A long dialogue can take well over gunicorn's default 30s to synthesise.
 timeout = 120
+# gunicorn 25.1+ opens an admin socket in the home directory by default. Nothing
+# here uses it, so don't create one on the host.
+control_socket_disable = True

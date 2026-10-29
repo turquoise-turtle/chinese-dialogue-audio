@@ -1,6 +1,6 @@
 # State
 
-Last updated 2026-10-27.
+Last updated 2026-10-30.
 
 ## Goal
 
@@ -15,7 +15,7 @@ Keep this fork working for the teacher who uses it, with little effort. The owne
 
 ## Open items
 
-- gunicorn 26.2.0 is available; the pin is 23.0.0. Not upgraded yet: it's a major jump, so read the release notes first.
+- gunicorn upgrade 23.0.0 → 26.2.0 (newest on PyPI; 26.2.1/26.2.2 are GitHub-only HTTP/2 and ASGI fixes that don't affect the gthread worker used here): pushed to `main` on 2026-10-30, with `control_socket_disable = True` added to `gunicorn.conf.py`. Release notes 24–26 reviewed: the only breaking change is the removed eventlet worker, which isn't used. Verified locally 2026-10-28: 29 offline tests, the live test and the smoke test against a local gunicorn 26.2.0 server all pass, and other requests stay fast during a long generation. Live check after the Render deploy: pending.
 - The Hugging Face Spaces deployment (`Dockerfile`) has never been tested.
 - pypinyin 0.55.0 uses `codecs.open()`, which Python 3.14 deprecates (warning filtered in `pytest.ini`).
 
