@@ -102,7 +102,7 @@ The app runs under gunicorn using the settings in `gunicorn.conf.py` (4 threads,
 
 ### Render (free tier)
 
-`render.yaml` is a Blueprint: in the Render dashboard choose **New → Blueprint** and point it at your GitHub repo. Pushes to the main branch redeploy automatically. The free tier sleeps after 15 minutes idle, so the first request after that takes about 30 seconds.
+`render.yaml` is a Blueprint: in the Render dashboard choose **New → Blueprint** and point it at your GitHub repo. Render deploys pushes automatically only if its GitHub app can see the repo. Without the app, Render can still build a public repo, but it never hears about pushes. To deploy on push without the app, copy the service's **Settings → Deploy Hook** URL and add it as a GitHub webhook (repo **Settings → Webhooks**, push events only). The free tier sleeps after 15 minutes idle, so the first request after that takes about 30 seconds.
 
 ### Hugging Face Spaces
 

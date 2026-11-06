@@ -41,7 +41,7 @@ The app is deployed on Render (free tier).
 - **WSGI server**: gunicorn (`gunicorn app:app`, settings in `gunicorn.conf.py`)
 - **Hugging Face Spaces**: `Dockerfile` plus the README front matter (`sdk: docker`, port 7860)
 - **Passcode**: optional `APP_PASSCODE` env var gates every route except `/login` and `/healthz`
-- **Auto-deploy**: Pushes to the main branch on GitHub trigger a redeploy
+- **Auto-deploy**: a GitHub webhook calls the service's Render deploy hook on every push (the Render GitHub app isn't installed, so Render's own auto-deploy never fires)
 - **Cold starts**: Free tier spins down after 15 min of inactivity; first request takes ~30s
 
 ## Paste Format for Web UI

@@ -26,7 +26,7 @@ All commands run from the repository root. They need [uv](https://docs.astral.sh
 
 3. Open the site in a browser and use it: generate audio, play it, toggle **Show Pinyin** and **Highlight Words**, and select some Chinese text to see a translation.
 
-4. In the Render dashboard, check that the latest deploy succeeded and that the Blueprint has no sync waiting for approval.
+4. In the Render dashboard, check that the commit shown as **Live** on the service is the latest commit on `main` and that its deploy succeeded. On the Blueprint, check that no sync is waiting for approval. An old "last synced" date is normal: the Blueprint only syncs when `render.yaml` changes.
 
 
 ## Quarterly (add about 15 minutes)
@@ -90,6 +90,16 @@ Visitors' browsers call Google directly. The smoke test checks the same call fro
 
 Check Render's status page and the service's events in the dashboard. A sleeping free instance taking about 30 seconds to wake is normal. If Render's free tier stops being usable, deploy to Hugging Face Spaces instead (see the README).
 
+### A push to `main` doesn't deploy
+
+The deploy list in Render shows no new deploy marked "Triggered via Deploy Hook", and the **Live** commit is out of date.
+
+1. On GitHub, open the repo's **Settings → Webhooks**, open the Render hook and check **Recent Deliveries**. A red delivery shows Render's reply.
+2. If the hook URL has changed or leaked, regenerate it in Render (**Settings → Deploy Hook**) and paste the new URL into the GitHub webhook.
+3. To ship now anyway, use **Manual Deploy → Deploy latest commit**.
+
+The smoke test can't tell which commit is live, so passing it doesn't prove a deploy happened.
+
 ### A change to `render.yaml` has no effect
 
 Open the Blueprint in Render, click **Manual Sync** if no sync is waiting, and approve the changes. Changes to existing environment variables always need this approval.
@@ -107,5 +117,5 @@ uv run --python 3.14 --no-project --with-requirements requirements.txt --with py
 ## Accounts and settings
 
 - **Code:** https://github.com/turquoise-turtle/chinese-dialogue-audio (`origin`), forked from https://github.com/maxchalabi/chinese-dialogue-audio (`upstream`).
-- **Hosting:** the Render service `chinese-audio-practice` is managed by a Blueprint built from `render.yaml`. Pushes to `main` deploy automatically.
+- **Hosting:** the Render service `chinese-audio-practice` is managed by a Blueprint built from `render.yaml`. Pushes to `main` deploy through a GitHub webhook (repo **Settings → Webhooks**) that calls the service's deploy hook (**Settings → Deploy Hook** in Render). The Render GitHub app isn't installed, so Render's own auto-deploy setting does nothing. The hook URL contains a secret: never put it in this repository.
 - **Environment variables:** `PYTHON_VERSION` comes from `render.yaml`. `APP_PASSCODE` is optional and set only in the Render dashboard. When it's unset, the site is open to anyone. Never write its value in this repository.
