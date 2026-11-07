@@ -41,6 +41,17 @@ def fetch(url, json_body=None, form=None):
             return resp.status, resp.headers, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.headers, e.read()
+    except OSError as e:
+        # Connection resets and timeouts happen while Render swaps in a new deploy.
+        return 0, {}, f"no response: {e}".encode()
+
+
+def parse_json(body):
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def check(name, ok, detail=""):
@@ -54,41 +65,46 @@ def main():
     print(f"Checking {base} (first request may take ~30 s while the site wakes)\n")
 
     status, _, body = fetch(f"{base}/healthz")
-    check("health check", status == 200 and json.loads(body) == {"status": "ok"}, f"HTTP {status}")
+    check("health check", status == 200 and parse_json(body) == {"status": "ok"}, f"HTTP {status}")
 
     passcode = os.environ.get("APP_PASSCODE")
     if passcode:
         status, _, _ = fetch(f"{base}/login", form={"passcode": passcode})
         check("passcode login", status == 200, f"HTTP {status}")
+        if status != 200:
+            print("\nAPP_PASSCODE doesn't match the site's passcode.")
+            return
 
     status, headers, _ = fetch(f"{base}/")
     csp = headers.get("Content-Security-Policy") or ""
     if "nonce-" not in csp:
-        # Only the main page carries a script nonce; anything else means a redirect to /login.
-        check("home page", False, "got the passcode page; set APP_PASSCODE and rerun")
+        # Only the main page carries a script nonce; a 200 without one is the /login page.
+        check("home page", False, "got the passcode page; set APP_PASSCODE and rerun" if status == 200 else f"HTTP {status}")
         return
     check("home page and security headers", status == 200 and "translate.googleapis.com" in csp, f"HTTP {status}")
 
     status, _, body = fetch(f"{base}/generate", json_body={"text": DIALOGUE, "voice_map": {}, "rate": "-10%"})
-    if status == 200:
-        data = json.loads(body)
+    data = parse_json(body)
+    try:
         mp3 = base64.b64decode(data["audio"])
-        check(
-            "audio generation (Microsoft speech service)",
-            mp3[:2] == b"\xff\xf3" and len(data["timing"]) == 3,
-            f"{len(mp3)} bytes, {data['timing'][-1]['end']} s",
-        )
-    else:
-        check("audio generation (Microsoft speech service)", False, f"HTTP {status}: {body[:200]!r}")
+        timing = data["timing"]
+        ok = status == 200 and mp3[:2] == b"\xff\xf3" and len(timing) == 3
+        detail = f"{len(mp3)} bytes, {timing[-1]['end']} s"
+    except (KeyError, IndexError, TypeError, ValueError):
+        ok, detail = False, f"HTTP {status}: {body[:200]!r}"
+    check("audio generation (Microsoft speech service)", ok, detail)
 
     status, _, body = fetch(f"{base}/pinyin", json_body={"text": "你好"})
-    check("pinyin", status == 200 and "hǎo" in json.loads(body).get("html", ""), f"HTTP {status}")
+    check("pinyin", status == 200 and "hǎo" in parse_json(body).get("html", ""), f"HTTP {status}")
 
     # Visitors' browsers call Google directly, so test from this machine, not the server.
     params = urllib.parse.urlencode({"client": "gtx", "sl": "zh-CN", "tl": "en", "dt": "t", "q": "我要两瓶水"})
     status, _, body = fetch(f"https://translate.googleapis.com/translate_a/single?{params}")
-    english = "".join(seg[0] or "" for seg in json.loads(body)[0]) if status == 200 else ""
-    check("Google translation", "water" in english.lower(), english or f"HTTP {status}")
+    try:
+        english = "".join(seg[0] or "" for seg in json.loads(body)[0])
+    except (ValueError, IndexError, TypeError):
+        english = ""
+    check("Google translation", "water" in english.lower(), english or f"HTTP {status}: {body[:100]!r}")
 
     print(f"\n{'All checks passed.' if not failures else f'{len(failures)} check(s) failed. See MAINTENANCE.md.'}")
 

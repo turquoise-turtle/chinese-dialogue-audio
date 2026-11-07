@@ -70,7 +70,7 @@ Open **http://localhost:5000** in your browser.
    ```
 2. Speakers are auto-detected. Assign voices in the sidebar.
 3. Adjust speed if needed (negative = slower, great for beginners).
-4. Click **Generate Audio** — listen inline or download the MP3.
+4. Click **Generate Audio** — listen inline or download the MP3. A dialogue can be up to 4,000 characters (about sixteen minutes of audio).
 5. Toggle **Highlight Words** to see character-by-character highlighting synced with audio playback.
 6. Use **Show Pinyin** to see pronunciation with tone sandhi corrections (combines with highlighting).
 7. **Select any text** to get an instant English translation tooltip.
@@ -98,7 +98,7 @@ The tool then turns those dialogues into audio I can listen to on repeat.
 
 ## Deployment
 
-The app runs under gunicorn using the settings in `gunicorn.conf.py` (4 threads, 120s timeout). `GET /healthz` returns `{"status": "ok"}` for host health checks.
+The app runs under gunicorn using the settings in `gunicorn.conf.py` (4 threads, 120s timeout). `MAX_DIALOGUE_CHARS` in `app.py` caps a dialogue at 4,000 characters, which takes about 70 seconds to generate, so one request finishes inside the timeout. `GET /healthz` returns `{"status": "ok"}` for host health checks.
 
 ### Render (free tier)
 

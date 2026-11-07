@@ -25,6 +25,9 @@ app = Flask(__name__)
 # Render and Hugging Face terminate HTTPS at a proxy; trust its X-Forwarded-Proto
 # so request.is_secure is accurate.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+# A dialogue at the text limit is well under this even with every character
+# \u-escaped; anything bigger is rejected before it's parsed.
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
 # Optional passcode gate. When APP_PASSCODE is unset, the app is open to anyone.
 PASSCODE = os.environ.get("APP_PASSCODE", "")
@@ -34,6 +37,10 @@ _OPEN_ENDPOINTS = {"login", "healthz", "static"}
 
 _RATE_RE = re.compile(r"^[+-]\d{1,2}%$")
 _MAX_RATE = 50
+# About sixteen minutes of speech, fifteen times the longest library dialogue,
+# and about 70 s to generate. Much more and one request could outlast gunicorn's
+# 120 s timeout and build a response tens of megabytes long on the free instance.
+MAX_DIALOGUE_CHARS = 4000
 
 
 def _auth_token() -> str:
@@ -157,6 +164,9 @@ def generate():
         return jsonify({"error": "Unknown voice"}), 400
     if not isinstance(rate, str) or not _RATE_RE.match(rate) or abs(int(rate[:-1])) > _MAX_RATE:
         return jsonify({"error": f"Rate must be between -{_MAX_RATE}% and +{_MAX_RATE}%"}), 400
+
+    if len(text) > MAX_DIALOGUE_CHARS:
+        return jsonify({"error": f"Dialogue is too long ({MAX_DIALOGUE_CHARS:,} characters at most)"}), 400
 
     lines = parse_dialogue(text)
     if not lines:

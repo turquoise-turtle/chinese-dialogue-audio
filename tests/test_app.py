@@ -67,6 +67,7 @@ def test_bad_request_bodies_do_not_crash(client):
     ({"rate": "+80%"}, "Rate must be between"),
     ({"rate": "fast"}, "Rate must be between"),
     ({"text": ""}, "No dialogue lines found"),
+    ({"text": "A：" + "好" * 4000}, "Dialogue is too long (4,000 characters"),
 ])
 def test_generate_rejects_invalid_input(client, fake_generate, body, error):
     resp = generate(client, **body)
@@ -80,6 +81,18 @@ def test_generate_returns_audio_inline(client, fake_generate):
     assert base64.b64decode(resp.json["audio"]) == b"\xff\xf3fake"
     assert resp.json["timing"] == [{"line": 0}]
     assert fake_generate == [([("A", "你好")], {"A": "zh-CN-YunxiNeural"}, "-10%")]
+
+
+def test_generate_accepts_a_dialogue_at_the_limit(client, fake_generate):
+    text = "A：" + "好" * (app_module.MAX_DIALOGUE_CHARS - 2)
+    assert generate(client, text=text).status_code == 200
+
+
+def test_oversized_request_body_is_a_json_413(client, fake_generate):
+    resp = generate(client, text="A：" + "好" * 70_000)
+    assert resp.status_code == 413
+    assert "error" in resp.json
+    assert fake_generate == []
 
 
 def test_speech_service_failure_is_a_json_502(client, monkeypatch):

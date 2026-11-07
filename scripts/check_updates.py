@@ -28,7 +28,11 @@ def main():
         if not m:
             continue
         name, pinned = m.groups()
-        latest = get_json(f"https://pypi.org/pypi/{name}/json")["info"]["version"]
+        try:
+            latest = get_json(f"https://pypi.org/pypi/{name}/json")["info"]["version"]
+        except (OSError, ValueError, KeyError) as e:
+            print(f"  {name:<10} {pinned:<10} could not check PyPI: {e}")
+            continue
         note = "up to date" if latest == pinned else f"UPDATE AVAILABLE: {latest}"
         print(f"  {name:<10} {pinned:<10} {note}")
 
@@ -41,7 +45,7 @@ def main():
 
     try:
         cycles = get_json("https://endoflife.date/api/python.json")
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print(f"  Could not reach endoflife.date: {e}")
         return
     newest = cycles[0]["cycle"]
